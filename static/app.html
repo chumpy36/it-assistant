@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HIT Assistant">
+  <meta name="theme-color" content="#080b12">
+  <link rel="manifest" href="/manifest.json">
+  <title>Holland IT Assistant</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #07090f;
+      --surface: #0b0f1a;
+      --surface2: #090d18;
+      --surface3: #0f1524;
+      --border: #1a2540;
+      --border-bright: #2d4f8a;
+      --accent: #5b8dd4;
+      --accent-dim: #152040;
+      --accent-glow: rgba(91, 141, 212, 0.15);
+      --green: #5fc4e8;
+      --green-dim: rgba(95, 196, 232, 0.1);
+      --text: #c8d4ee;
+      --text-dim: #5a6a8a;
+      --text-bright: #e4ecff;
+      --user-bg: #0d1a30;
+      --user-border: #1e3a70;
+      --code-bg: #050810;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    html, body {
+      height: 100dvh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+    }
+
+    #body-row {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      background: var(--surface2);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .sidebar-section h3 {
+      font-size: 9px;
+      font-family: var(--mono);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 5px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .sidebar-item:hover {
+      background: var(--accent-glow);
+      color: var(--accent);
+    }
+
+    .sidebar-item .si-label {
+      display: block;
+      font-weight: 500;
+      color: var(--text-bright);
+      font-size: 12px;
+    }
+
+    .sidebar-item .si-example {
+      display: block;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      margin-top: 1px;
+    }
+
+    #main-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    @media (max-width: 600px) {
+      #sidebar { display: none; }
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.4;
+    }
+
+    .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .header-text {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-bright);
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+
+    .header-sub {
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-family: var(--mono);
+      opacity: 0.8;
+    }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--green);
+      margin-left: 2px;
+      flex-shrink: 0;
+    }
+
+    #clear-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    #clear-btn:active { color: var(--accent); border-color: var(--accent); }
+
+    /* ── Messages ── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Subtle scan-line texture */
+    #messages::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      max-width: 90%;
+      gap: 4px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.assistant { align-self: flex-start; align-items: flex-start; }
+
+    .label {
+      font-size: 10px;
+      color: var(--text-dim);
+      padding: 0 4px;
+      font-family: var(--mono);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .user .label { color: var(--accent); opacity: 0.7; }
+
+    .bubble {
+      padding: 10px 14px;
+      border-radius: 2px;
+      word-break: break-word;
+      white-space: pre-wrap;
+      position: relative;
+    }
+
+    .user .bubble {
+      background: var(--user-bg);
+      border: 1px solid var(--user-border);
+      border-radius: 8px 8px 2px 8px;
+    }
+
+    .assistant .bubble {
+      background: var(--surface3);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--accent);
+      border-radius: 2px 8px 8px 8px;
+    }
+
+    /* ── Thinking ── */
+    .thinking .bubble {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 12px 16px;
+    }
+
+    .dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 4px var(--accent);
+      animation: pulse 1.4s infinite;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes pulse {
+      0%, 60%, 100% { transform: scale(1); opacity: 0.4; }
+      30% { transform: scale(1.3); opacity: 1; }
+    }
+
+    /* ── Markdown ── */
+    .bubble strong { font-weight: 700; color: var(--text-bright); }
+    .bubble em { font-style: italic; color: var(--text-dim); }
+
+    .bubble h1, .bubble h2, .bubble h3 {
+      color: var(--text-bright);
+      font-size: 14px;
+      font-weight: 700;
+      margin: 10px 0 4px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.3px;
+    }
+
+    .bubble code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+    }
+
+    .bubble pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--green);
+      border-radius: 4px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+
+    .bubble pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 12px;
+      color: var(--green);
+    }
+
+    .bubble ul, .bubble ol {
+      padding-left: 18px;
+      margin: 4px 0;
+    }
+
+    .bubble li { margin: 3px 0; }
+    .bubble li::marker { color: var(--accent); }
+
+    .bubble a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(0,212,255,0.3);
+      transition: border-color 0.15s;
+    }
+    .bubble a:hover { border-bottom-color: var(--accent); }
+
+    .bubble hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 10px 0;
+    }
+
+    /* Ticket number styling */
+    .bubble .ticket-ref {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: var(--accent-glow);
+      border: 1px solid var(--accent-dim);
+      border-radius: 3px;
+      padding: 0 4px;
+    }
+
+    /* ── Input area ── */
+    #input-area {
+      background: var(--surface2);
+      border-top: 1px solid var(--border);
+      padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px);
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    #input-area::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.3;
+    }
+
+    #user-input {
+      flex: 1;
+      background: var(--surface3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 16px;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      max-height: 120px;
+      overflow-y: auto;
+      line-height: 1.4;
+      -webkit-overflow-scrolling: touch;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    #user-input:focus {
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.08);
+    }
+
+    #user-input::placeholder { color: var(--text-dim); }
+
+    #send-btn {
+      background: linear-gradient(135deg, #005f8a, #0091b5);
+      border: 1px solid var(--accent-dim);
+      border-radius: 6px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      box-shadow: 0 0 10px rgba(0,212,255,0.1);
+    }
+
+    #send-btn:not(:disabled):hover {
+      box-shadow: 0 0 14px rgba(0,212,255,0.25);
+      border-color: var(--accent);
+    }
+
+    #send-btn:disabled { opacity: 0.3; cursor: not-allowed; box-shadow: none; }
+    #send-btn:not(:disabled):active { transform: scale(0.95); }
+
+    #send-btn svg { width: 17px; height: 17px; fill: var(--accent); }
+
+    /* ── Welcome screen ── */
+    .welcome {
+      text-align: center;
+      padding: 40px 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .welcome-logo {
+      width: 320px;
+      height: auto;
+      margin: 0 auto 16px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 16px rgba(91,141,212,0.25));
+    }
+
+    .welcome h2 {
+      color: var(--text-bright);
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .welcome .tagline {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--accent);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      opacity: 0.7;
+    }
+
+    .examples-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      max-width: 360px;
+      margin: 0 auto;
+    }
+
+    .example-chip {
+      background: var(--surface3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-dim);
+      text-align: left;
+      line-height: 1.4;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .example-chip:active {
+      background: var(--accent-glow);
+      border-color: var(--accent-dim);
+      color: var(--text);
+    }
+
+    .example-chip .chip-icon {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+
+    /* ── Whale background ── */
+    .whale-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .whale {
+      position: absolute;
+      fill: rgba(45, 79, 138, 0.08);
+      animation: drift linear infinite;
+    }
+
+    .w1 { width: 280px; bottom: 12%; left: -60px;  animation-duration: 40s; animation-delay: 0s;   opacity: 1.0; }
+    .w2 { width: 180px; bottom: 38%; right: -40px; animation-duration: 55s; animation-delay: -18s; opacity: 0.7; }
+    .w3 { width: 120px; bottom: 62%; left: 22%;    animation-duration: 70s; animation-delay: -35s; opacity: 0.5; }
+    .w4 { width: 200px; bottom: 25%; right: 10%;   animation-duration: 48s; animation-delay: -8s;  opacity: 0.6; }
+    .w5 { width: 90px;  bottom: 78%; right: 30%;   animation-duration: 80s; animation-delay: -50s; opacity: 0.35; }
+    .w6 { width: 240px; bottom: 5%;  left: 30%;    animation-duration: 62s; animation-delay: -28s; opacity: 0.55; }
+    .w7 { width: 140px; bottom: 50%; left: 5%;     animation-duration: 90s; animation-delay: -60s; opacity: 0.4; }
+
+    /* facing right */
+    .w2, .w3, .w5, .w6 { animation-name: drift; }
+    @keyframes drift {
+      0%   { transform: translateX(0)    translateY(0)    scaleX(1); }
+      25%  { transform: translateX(30px) translateY(-15px) scaleX(1); }
+      50%  { transform: translateX(55px) translateY(5px)  scaleX(1); }
+      75%  { transform: translateX(20px) translateY(-8px) scaleX(1); }
+      100% { transform: translateX(0)    translateY(0)    scaleX(1); }
+    }
+
+    /* facing left */
+    .w1, .w4, .w7 { animation-name: drift-left; }
+    @keyframes drift-left {
+      0%   { transform: translateX(0)     translateY(0)    scaleX(-1); }
+      25%  { transform: translateX(-22px) translateY(-12px) scaleX(-1); }
+      50%  { transform: translateX(-50px) translateY(8px)  scaleX(-1); }
+      75%  { transform: translateX(-15px) translateY(-5px) scaleX(-1); }
+      100% { transform: translateX(0)     translateY(0)    scaleX(-1); }
+    }
+
+    /* ── Action chips ── */
+    .action-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 2px 0 8px 0;
+      align-self: flex-start;
+      max-width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    .action-chip {
+      background: var(--surface);
+      border: 1px solid var(--border-bright);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--accent);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      letter-spacing: 0.3px;
+    }
+
+    .action-chip:active {
+      background: var(--accent-glow);
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <img src="/static/logo.png" alt="Holland IT" class="logo">
+    <div class="header-text">
+      <h1>Holland I.T.</h1>
+      <span class="header-sub">AI Assistant</span>
+    </div>
+    <div class="status-dot" title="Online"></div>
+    <button id="clear-btn" onclick="clearChat()">Clear</button>
+  </header>
+
+  <div id="body-row">
+  <aside id="sidebar">
+    <div class="sidebar-section">
+      <h3>Tickets</h3>
+      <button class="sidebar-item" onclick="prefill('Show all new tickets')">
+        <span class="si-label">New tickets</span>
+        <span class="si-example">Show all new tickets</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Morning briefing')">
+        <span class="si-label">Morning briefing</span>
+        <span class="si-example">What needs attention?</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Show in progress tickets')">
+        <span class="si-label">In progress</span>
+        <span class="si-example">Show in progress tickets</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Find tickets about ')">
+        <span class="si-label">Search tickets</span>
+        <span class="si-example">Find tickets about VPN</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Make a ticket for ')">
+        <span class="si-label">Create ticket</span>
+        <span class="si-example">Make a ticket for [customer]</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Resolve ticket ')">
+        <span class="si-label">Resolve ticket</span>
+        <span class="si-example">Resolve ticket 116627</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Add internal note to ticket ')">
+        <span class="si-label">Internal note</span>
+        <span class="si-example">Add note to ticket 116627</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Log 1 hour on ticket ')">
+        <span class="si-label">Log time</span>
+        <span class="si-example">Log 1 hour on ticket 116627</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Create invoice for ticket ')">
+        <span class="si-label">Create invoice</span>
+        <span class="si-example">Invoice for ticket 116627</span>
+      </button>
+    </div>
+    <div class="sidebar-section">
+      <h3>Todoist</h3>
+      <button class="sidebar-item" onclick="prefill('What tasks are due today?')">
+        <span class="si-label">Due today</span>
+        <span class="si-example">What tasks are due today?</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Show overdue tasks')">
+        <span class="si-label">Overdue</span>
+        <span class="si-example">Show overdue tasks</span>
+      </button>
+      <button class="sidebar-item" onclick="prefill('Add task ')">
+        <span class="si-label">Add task</span>
+        <span class="si-example">Add task [description]</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="whale-bg" aria-hidden="true">
+    <!-- Sperm whale: large blunt head, tapered body, small dorsal hump, forked flukes -->
+    <svg class="whale w1" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+      <!-- body -->
+      <path d="M30 58 Q20 40 18 35 Q16 28 22 28 Q30 28 38 36 Q55 20 90 18 Q140 14 190 22 Q230 28 258 40 Q272 46 275 55 Q278 64 270 70 Q255 78 230 76 Q200 74 170 72 Q140 70 110 74 Q80 78 60 76 Q44 74 36 68 Q32 63 30 58Z"/>
+      <!-- dorsal hump -->
+      <path d="M150 22 Q162 8 175 12 Q182 15 178 22Z"/>
+      <!-- flukes (tail fin) -->
+      <path d="M258 40 Q278 28 292 18 Q300 12 302 20 Q304 28 290 36 Q282 40 275 55 Q270 68 280 78 Q292 88 296 96 Q298 104 290 102 Q278 96 265 82 Q258 72 255 62Z"/>
+      <!-- flipper -->
+      <path d="M90 58 Q82 72 70 78 Q60 82 58 74 Q56 66 68 62Z"/>
+    </svg>
+    <svg class="whale w2" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 58 Q20 40 18 35 Q16 28 22 28 Q30 28 38 36 Q55 20 90 18 Q140 14 190 22 Q230 28 258 40 Q272 46 275 55 Q278 64 270 70 Q255 78 230 76 Q200 74 170 72 Q140 70 110 74 Q80 78 60 76 Q44 74 36 68 Q32 63 30 58Z"/>
+      <path d="M150 22 Q162 8 175 12 Q182 15 178 22Z"/>
+      <path d="M258 40 Q278 28 292 18 Q300 12 302 20 Q304 28 290 36 Q282 40 275 55 Q270 68 280 78 Q292 88 296 96 Q298 104 290 102 Q278 96 265 82 Q258 72 255 62Z"/>
+      <path d="M90 58 Q82 72 70 78 Q60 82 58 74 Q56 66 68 62Z"/>
+    </svg>
+    <svg class="whale w3" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 58 Q20 40 18 35 Q16 28 22 28 Q30 28 38 36 Q55 20 90 18 Q140 14 190 22 Q230 28 258 40 Q272 46 275 55 Q278 64 270 70 Q255 78 230 76 Q200 74 170 72 Q140 70 110 74 Q80 78 60 76 Q44 74 36 68 Q32 63 30 58Z"/>
+      <path d="M150 22 Q162 8 175 12 Q182 15 178 22Z"/>
+      <path d="M258 40 Q278 28 292 18 Q300 12 302 20 Q304 28 290 36 Q282 40 275 55 Q270 68 280 78 Q292 88 296 96 Q298 104 290 102 Q278 96 265 82 Q258 72 255 62Z"/>
+      <path d="M90 58 Q82 72 70 78 Q60 82 58 74 Q56 66 68 62Z"/>
+    </svg>
+    <!-- w4: medium, right side, facing left -->
+    <svg class="whale w4" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 58 Q20 40 18 35 Q16 28 22 28 Q30 28 38 36 Q55 20 90 18 Q140 14 190 22 Q230 28 258 40 Q272 46 275 55 Q278 64 270 70 Q255 78 230 76 Q200 74 170 72 Q140 70 110 74 Q80 78 60 76 Q44 74 36 68 Q32 63 30 58Z"/>
+      <path d="M150 22 Q162 8 175 12 Q182 15 178 22Z"/>
+      <path d="M258 40 Q278 28 292 18 Q300 12 302 20 Q304 28 290 36 Q282 40 275 55 Q270 68 280 78 Q292 88 296 96 Q298 104 290 102 Q278 96 265 82 Q258 72 255 62Z"/>
+      <path d="M90 58 Q82 72 70 78 Q60 82 58 74 Q56 66 68 62Z"/>
+    </svg>
+    <!-- w5: tiny, high up, facing right -->
+    <svg class="whale w5" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 58 Q20 40 18 35 Q16 28 22 28 Q30 28 38 36 Q55 20 90 18 Q140 14 190 22 Q230 28 258 40 Q272 46 275 55 Q278 64 270 70 Q255 78 230 76 Q200 74 170 72 Q140 70 110 74 Q80 78 60 76 Q44 74 36 68 Q32 63 30 58Z"/>
+      <path d="M150 22 Q162 8 175 12 Q182 15 178 22Z"/>
+      <path d="M258 40 Q278 28 292 18 Q300 12 302 20 Q304 28 290 36 Q282 40 275 55 Q270 68 280 78 Q292 88 296 96 Q298 104 290 102 Q278 96 265 82 Q258 72 255 62Z"/>
+      <path d="M90 58 Q82 72 70 78 Q60 82 58 74 Q56 66 68 62Z"/>
+    </svg>
+    <!-- w6: large, near bottom center, facing right -->
+    <svg class="whale w6" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 58 Q20 40 18 35 Q16 28 22 28 Q30 28 38 36 Q55 20 90 18 Q140 14 190 22 Q230 28 258 40 Q272 46 275 55 Q278 64 270 70 Q255 78 230 76 Q200 74 170 72 Q140 70 110 74 Q80 78 60 76 Q44 74 36 68 Q32 63 30 58Z"/>
+      <path d="M150 22 Q162 8 175 12 Q182 15 178 22Z"/>
+      <path d="M258 40 Q278 28 292 18 Q300 12 302 20 Q304 28 290 36 Q282 40 275 55 Q270 68 280 78 Q292 88 296 96 Q298 104 290 102 Q278 96 265 82 Q258 72 255 62Z"/>
+      <path d="M90 58 Q82 72 70 78 Q60 82 58 74 Q56 66 68 62Z"/>
+    </svg>
+    <!-- w7: small, mid-left, facing left -->
+    <svg class="whale w7" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 58 Q20 40 18 35 Q16 28 22 28 Q30 28 38 36 Q55 20 90 18 Q140 14 190 22 Q230 28 258 40 Q272 46 275 55 Q278 64 270 70 Q255 78 230 76 Q200 74 170 72 Q140 70 110 74 Q80 78 60 76 Q44 74 36 68 Q32 63 30 58Z"/>
+      <path d="M150 22 Q162 8 175 12 Q182 15 178 22Z"/>
+      <path d="M258 40 Q278 28 292 18 Q300 12 302 20 Q304 28 290 36 Q282 40 275 55 Q270 68 280 78 Q292 88 296 96 Q298 104 290 102 Q278 96 265 82 Q258 72 255 62Z"/>
+      <path d="M90 58 Q82 72 70 78 Q60 82 58 74 Q56 66 68 62Z"/>
+    </svg>
+  </div>
+
+  <div id="main-col">
+  <div id="messages">
+    <div class="welcome" id="welcome">
+      <img src="/static/logo.png" alt="Holland IT" class="welcome-logo">
+      <h2>Holland I.T. Assistant</h2>
+      <div class="tagline">Syncro · Todoist · AI</div>
+      <div class="examples-grid">
+        <button class="example-chip" onclick="sendExample(this)">
+          <span class="chip-icon">🎫</span>Show open tickets
+        </button>
+        <button class="example-chip" onclick="sendExample(this)">
+          <span class="chip-icon">🔍</span>What needs attention?
+        </button>
+        <button class="example-chip" onclick="sendExample(this)">
+          <span class="chip-icon">✅</span>Tasks due today
+        </button>
+        <button class="example-chip" onclick="sendExample(this)">
+          <span class="chip-icon">➕</span>Make a ticket
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <textarea
+      id="user-input"
+      placeholder="Ask anything..."
+      rows="1"
+      autocorrect="on"
+      autocapitalize="sentences"
+      spellcheck="true"
+    ></textarea>
+    <button id="send-btn" onclick="sendMessage()" disabled>
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+  </div><!-- /main-col -->
+  </div><!-- /body-row -->
+</div>
+
+<script>
+  let history = [];
+  let isLoading = false;
+
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('user-input');
+  const sendBtn = document.getElementById('send-btn');
+  const welcomeEl = document.getElementById('welcome');
+
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    sendBtn.disabled = !inputEl.value.trim() || isLoading;
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!sendBtn.disabled) sendMessage();
+    }
+  });
+
+  const exampleFill = { 'Make a ticket': 'Make a ticket for ' };
+
+  function prefill(text) {
+    inputEl.value = text;
+    inputEl.dispatchEvent(new Event('input'));
+    inputEl.focus();
+    inputEl.setSelectionRange(text.length, text.length);
+  }
+
+  function sendExample(btn) {
+    const text = btn.querySelector('.chip-icon')
+      ? btn.textContent.replace(btn.querySelector('.chip-icon').textContent, '').trim()
+      : btn.textContent.trim();
+    inputEl.value = exampleFill[text] || text;
+    inputEl.dispatchEvent(new Event('input'));
+    if (exampleFill[text]) {
+      inputEl.focus();
+      inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+    } else {
+      sendMessage();
+    }
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || isLoading) return;
+
+    welcomeEl.style.display = 'none';
+    appendMessage('user', text);
+    history.push({ role: 'user', content: text });
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    sendBtn.disabled = true;
+    isLoading = true;
+
+    const thinkingEl = appendThinking();
+
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history }),
+      });
+
+      thinkingEl.remove();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        appendMessage('assistant', `Error: ${err.detail || res.statusText}`);
+        return;
+      }
+
+      const data = await res.json();
+      const reply = data.content || '';
+      history.push({ role: 'assistant', content: reply });
+      appendMessage('assistant', reply);
+      appendActionChips(reply);
+
+    } catch (err) {
+      thinkingEl.remove();
+      appendMessage('assistant', `Network error: ${err.message}`);
+    } finally {
+      isLoading = false;
+      sendBtn.disabled = !inputEl.value.trim();
+    }
+  }
+
+  function appendMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = role === 'user' ? '▸ you' : '▸ assistant';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = renderMarkdown(text);
+
+    div.appendChild(label);
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function appendThinking() {
+    const div = document.createElement('div');
+    div.className = 'message assistant thinking';
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = '▸ assistant';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+
+    div.appendChild(label);
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function appendActionChips(text) {
+    const ticketMatches = [...text.matchAll(/\b(1\d{5})\b/g)];
+    const ticketNums = [...new Set(ticketMatches.map(m => m[1]))];
+
+    let chips = [];
+
+    if (ticketNums.length === 1) {
+      const n = ticketNums[0];
+      chips = [
+        { label: `↩ reply #${n}`, text: `Reply to ticket ${n}: `, send: false },
+        { label: `⏱ log time #${n}`, text: `Log 1 hour on ticket ${n} for `, send: false },
+        { label: `🔒 note #${n}`, text: `Add internal note to ticket ${n}: `, send: false },
+        { label: `✓ resolve #${n}`, text: `Resolve ticket ${n}`, send: true },
+      ];
+    } else if (ticketNums.length > 1) {
+      chips = [
+        { label: '⚡ what needs attention?', text: 'What needs attention?', send: true },
+        { label: '🎫 open tickets', text: 'Show my open tickets', send: true },
+      ];
+    } else if (/task|todoist/i.test(text)) {
+      chips = [
+        { label: '📅 tasks due today', text: "What are my tasks due today?", send: true },
+        { label: '➕ add task', text: 'Add task: ', send: false },
+      ];
+    } else {
+      chips = [
+        { label: '⚡ what needs attention?', text: 'What needs attention?', send: true },
+        { label: '🎫 open tickets', text: 'Show my open tickets', send: true },
+        { label: '📅 tasks today', text: "What are my tasks due today?", send: true },
+      ];
+    }
+
+    if (!chips.length) return;
+
+    const row = document.createElement('div');
+    row.className = 'action-chips';
+    chips.forEach(c => {
+      const btn = document.createElement('button');
+      btn.className = 'action-chip';
+      btn.textContent = c.label;
+      btn.onclick = () => {
+        inputEl.value = c.text;
+        inputEl.dispatchEvent(new Event('input'));
+        row.remove();
+        if (c.send) {
+          sendMessage();
+        } else {
+          inputEl.focus();
+          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+        }
+      };
+      row.appendChild(btn);
+    });
+    messagesEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function clearChat() {
+    history = [];
+    messagesEl.innerHTML = '';
+    welcomeEl.style.display = 'block';
+    messagesEl.appendChild(welcomeEl);
+  }
+
+  function renderMarkdown(text) {
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      return `<pre><code>${code.trim()}</code></pre>`;
+    });
+
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    html = html.replace(/(^|[\s>])(https?:\/\/[^\s<"]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+
+    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    html = html.replace(/^---$/gm, '<hr>');
+    html = html.replace(/^[\s]*[-*] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>[^<]*<\/li>\n?)+/g, match => `<ul>${match}</ul>`);
+    html = html.replace(/\n\n/g, '\n');
+
+    return html;
+  }
+</script>
+</body>
+</html>
