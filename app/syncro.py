@@ -33,19 +33,16 @@ def ticket_url(ticket_id: int) -> str:
 async def _find_user_id(client: httpx.AsyncClient, name: str) -> int:
     resp = await client.get(f"{BASE_URL}/users", headers=_headers())
     resp.raise_for_status()
+    # API returns [[id, name], ...] format
     users = resp.json().get("users", [])
     query = name.lower()
-    matches = [
-        u for u in users
-        if query in (u.get("name") or "").lower()
-        or query in (u.get("email") or "").lower()
-    ]
+    matches = [u for u in users if query in str(u[1]).lower()]
     if not matches:
         raise ValueError(f"No user found matching '{name}'")
     if len(matches) > 1:
-        options = [{"id": u["id"], "name": u.get("name")} for u in matches]
+        options = [{"id": u[0], "name": u[1]} for u in matches]
         raise ValueError(f"Multiple users found — be more specific: {options}")
-    return matches[0]["id"]
+    return matches[0][0]
 
 
 async def _find_customer_id(client: httpx.AsyncClient, name: str) -> int:
