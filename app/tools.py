@@ -22,6 +22,10 @@ TOOLS = [
                     "type": "string",
                     "description": "Search tickets by keyword in subject or customer name",
                 },
+                "assigned_to": {
+                    "type": "string",
+                    "description": "Filter by assigned technician name, e.g. 'Jason' or 'Rex'",
+                },
             },
         },
     },
@@ -230,6 +234,7 @@ async def dispatch_tool(name: str, input: dict) -> str:
                 status=input.get("status"),
                 customer_name=input.get("customer_name"),
                 keyword=input.get("keyword"),
+                assigned_to=input.get("assigned_to"),
             )
         elif name == "syncro_get_ticket":
             result = await syncro.get_ticket(input["ticket_id"] if "ticket_id" in input else input["ticket_ref"])

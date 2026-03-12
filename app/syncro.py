@@ -30,6 +30,24 @@ def ticket_url(ticket_id: int) -> str:
     return f"{SYNCRO_BASE}/tickets/{ticket_id}"
 
 
+async def _find_user_id(client: httpx.AsyncClient, name: str) -> int:
+    resp = await client.get(f"{BASE_URL}/users", headers=_headers())
+    resp.raise_for_status()
+    users = resp.json().get("users", [])
+    query = name.lower()
+    matches = [
+        u for u in users
+        if query in (u.get("name") or "").lower()
+        or query in (u.get("email") or "").lower()
+    ]
+    if not matches:
+        raise ValueError(f"No user found matching '{name}'")
+    if len(matches) > 1:
+        options = [{"id": u["id"], "name": u.get("name")} for u in matches]
+        raise ValueError(f"Multiple users found — be more specific: {options}")
+    return matches[0]["id"]
+
+
 async def _find_customer_id(client: httpx.AsyncClient, name: str) -> int:
     resp = await client.get(f"{BASE_URL}/customers", params={"name": name}, headers=_headers())
     resp.raise_for_status()
@@ -69,6 +87,7 @@ async def list_tickets(
     status: str | None = None,
     customer_name: str | None = None,
     keyword: str | None = None,
+    assigned_to: str | None = None,
 ) -> dict:
     async with httpx.AsyncClient() as client:
         params = {}
@@ -79,6 +98,9 @@ async def list_tickets(
             params["customer_id"] = customer_id
         if keyword:
             params["q"] = keyword
+        if assigned_to:
+            user_id = await _find_user_id(client, assigned_to)
+            params["user_id"] = user_id
 
         resp = await client.get(f"{BASE_URL}/tickets", params=params, headers=_headers())
         resp.raise_for_status()
