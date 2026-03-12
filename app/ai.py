@@ -41,6 +41,11 @@ When asked what needs attention, what to work on, or for a morning briefing:
 - When showing a ticket, if recent_customer_tickets is present, show a brief "Recent tickets from this customer" section with the last few tickets as links
 - This gives context — e.g. if the same customer has had recurring issues
 
+## Technicians
+- "my tickets" / "Jason's tickets" / "mine" → assigned_to="Jason"
+- "Rex's tickets" → assigned_to="Rex"
+- Always use assigned_to filter when a specific technician is mentioned or implied
+
 ## Ticket Search
 - "Find tickets about VPN" → use keyword search
 - "Show all Welch tickets" → use customer_name filter
