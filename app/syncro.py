@@ -45,22 +45,64 @@ async def _find_user_id(client: httpx.AsyncClient, name: str) -> int:
     return matches[0][0]
 
 
+import re as _re
+
+def _tokenize(name: str) -> list[str]:
+    """Split on spaces/hyphens AND camelCase, return lowercase words >= 3 chars."""
+    # Insert space before uppercase letters that follow lowercase (camelCase split)
+    spaced = _re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+    return [w for w in spaced.lower().replace("-", " ").split() if len(w) >= 3]
+
+
 async def _find_customer_id(client: httpx.AsyncClient, name: str) -> int:
-    resp = await client.get(f"{BASE_URL}/customers", params={"name": name}, headers=_headers())
-    resp.raise_for_status()
-    customers = resp.json().get("customers", [])
-    query = name.lower()
-    named = [
-        c for c in customers
-        if query in customer_display_name(c).lower()
-        and customer_display_name(c).lower() not in ("", "none none")
-    ]
-    if not named:
+    query_words = _tokenize(name)
+
+    async def _search_and_filter(params: dict) -> list:
+        resp = await client.get(f"{BASE_URL}/customers", params=params, headers=_headers())
+        resp.raise_for_status()
+        customers = resp.json().get("customers", [])
+        return [
+            c for c in customers
+            if all(w in customer_display_name(c).lower() for w in query_words)
+            and customer_display_name(c).lower() not in ("", "none none")
+        ]
+
+    # Try API search first with client-side word filter applied
+    candidates = await _search_and_filter({"name": name})
+
+    # Fall back to full paginated fetch if no match
+    if not candidates:
+        all_c: list = []
+        page = 1
+        while True:
+            resp = await client.get(
+                f"{BASE_URL}/customers",
+                params={"page": page, "per_page": 100},
+                headers=_headers(),
+            )
+            resp.raise_for_status()
+            batch = resp.json().get("customers", [])
+            all_c.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
+        candidates = [
+            c for c in all_c
+            if all(w in customer_display_name(c).lower() for w in query_words)
+            and customer_display_name(c).lower() not in ("", "none none")
+        ]
+
+    if not candidates:
         raise ValueError(f"No customer found matching '{name}'")
-    if len(named) > 1:
-        matches = [{"id": c["id"], "name": customer_display_name(c)} for c in named]
+    if len(candidates) > 1:
+        # Prefer exact substring match (e.g. "Pro Georgia" inside "Pro Georgia (ProGa / PGA)")
+        query_lower = " ".join(_tokenize(name))
+        exact = [c for c in candidates if query_lower in customer_display_name(c).lower()]
+        if len(exact) == 1:
+            return exact[0]["id"]
+        matches = [{"id": c["id"], "name": customer_display_name(c)} for c in candidates]
         raise ValueError(f"Multiple customers found — specify which one: {matches}")
-    return named[0]["id"]
+    return candidates[0]["id"]
 
 
 async def _resolve_ticket_id(client: httpx.AsyncClient, ticket_ref: int) -> tuple[int, int]:
@@ -180,14 +222,39 @@ async def get_ticket(ticket_ref: int) -> dict:
         }
 
 
+async def _find_contact_id(client: httpx.AsyncClient, customer_id: int, contact_name: str) -> int | None:
+    resp = await client.get(f"{BASE_URL}/customers/{customer_id}", headers=_headers())
+    resp.raise_for_status()
+    contacts = resp.json().get("customer", {}).get("contacts", [])
+    words = _tokenize(contact_name)
+
+    # Try full substring match first, then any-word match as fallback
+    for matcher in [
+        lambda name: contact_name.lower() in name,
+        lambda name: any(w in name for w in words),
+    ]:
+        matches = [c for c in contacts if matcher(c.get("name", "").lower())]
+        if len(matches) == 1:
+            return matches[0]["id"]
+        if len(matches) > 1:
+            names = [c["name"] for c in matches]
+            raise ValueError(f"Multiple contacts matched '{contact_name}': {names}")
+    return None
+
+
 async def create_ticket(
-    customer_name: str,
     subject: str,
+    customer_name: str | None = None,
+    customer_id: int | None = None,
+    contact_name: str | None = None,
     description: str | None = None,
     issue_type: str = "Remote Break/Fix",
 ) -> dict:
     async with httpx.AsyncClient() as client:
-        customer_id = await _find_customer_id(client, customer_name)
+        if customer_id is None:
+            if not customer_name:
+                raise ValueError("Either customer_name or customer_id is required")
+            customer_id = await _find_customer_id(client, customer_name)
         payload = {
             "customer_id": customer_id,
             "subject": subject,
@@ -195,6 +262,10 @@ async def create_ticket(
         }
         if description:
             payload["description"] = description
+        if contact_name:
+            contact_id = await _find_contact_id(client, customer_id, contact_name)
+            if contact_id:
+                payload["contact_id"] = contact_id
 
         resp = await client.post(f"{BASE_URL}/tickets", json=payload, headers=_headers())
         resp.raise_for_status()
@@ -207,6 +278,7 @@ async def create_ticket(
             "url": ticket_url(ticket.get("id")),
             "subject": ticket.get("subject"),
             "customer": ticket.get("customer_business_name"),
+            "contact_id": ticket.get("contact_id"),
         }
 
 

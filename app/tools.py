@@ -45,13 +45,21 @@ TOOLS = [
     },
     {
         "name": "syncro_create_ticket",
-        "description": "Create a new Syncro MSP ticket for a customer.",
+        "description": "Create a new Syncro MSP ticket for a customer. Provide either customer_name (for lookup) or customer_id (if you already know it).",
         "input_schema": {
             "type": "object",
             "properties": {
                 "customer_name": {
                     "type": "string",
-                    "description": "Customer name to search for (must match a Syncro customer)",
+                    "description": "Customer name to search for (partial match supported)",
+                },
+                "customer_id": {
+                    "type": "integer",
+                    "description": "Syncro customer ID — use this directly if you already know it, skips name lookup",
+                },
+                "contact_name": {
+                    "type": "string",
+                    "description": "Contact name within the customer — this person will receive ticket email notifications",
                 },
                 "subject": {
                     "type": "string",
@@ -66,7 +74,7 @@ TOOLS = [
                     "description": "Issue/problem type, e.g. 'Remote Break/Fix', 'On-Site Visit'",
                 },
             },
-            "required": ["customer_name", "subject"],
+            "required": ["subject"],
         },
     },
     {
@@ -240,7 +248,9 @@ async def dispatch_tool(name: str, input: dict) -> str:
             result = await syncro.get_ticket(input["ticket_id"] if "ticket_id" in input else input["ticket_ref"])
         elif name == "syncro_create_ticket":
             result = await syncro.create_ticket(
-                customer_name=input["customer_name"],
+                customer_name=input.get("customer_name"),
+                customer_id=input.get("customer_id"),
+                contact_name=input.get("contact_name"),
                 subject=input["subject"],
                 description=input.get("description"),
                 issue_type=input.get("issue_type", "Remote Break/Fix"),
