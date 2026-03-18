@@ -8,6 +8,9 @@ DIR="/volume1/docker/syncro-todoist-assistant"
 
 cd "$DIR"
 
+echo "[deploy] Pulling latest code from GitHub..."
+git pull origin main
+
 # Load SYNCRO_API_TOKEN from .env
 SYNCRO_API_TOKEN=$(grep SYNCRO_API_TOKEN .env | cut -d= -f2 | tr -d '[:space:]')
 
