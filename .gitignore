@@ -1,4 +1,7 @@
 .env
+gcal_credentials.json
+gcal_token.json
+venv_monthly/
 __pycache__/
 *.pyc
 *.pyo

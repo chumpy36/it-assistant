@@ -73,13 +73,17 @@ TOOLS = [
                     "type": "string",
                     "description": "Issue/problem type, e.g. 'Remote Break/Fix', 'On-Site Visit'",
                 },
+                "assigned_to": {
+                    "type": "string",
+                    "description": "Technician name to assign the ticket to, e.g. 'Jason' or 'Rex'",
+                },
             },
             "required": ["subject"],
         },
     },
     {
         "name": "syncro_update_ticket",
-        "description": "Update a Syncro ticket's status or subject.",
+        "description": "Update a Syncro ticket's status, subject, or assigned technician.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -94,6 +98,10 @@ TOOLS = [
                 "subject": {
                     "type": "string",
                     "description": "New subject/title for the ticket",
+                },
+                "assigned_to": {
+                    "type": "string",
+                    "description": "Technician name to assign the ticket to, e.g. 'Jason' or 'Rex'",
                 },
             },
             "required": ["ticket_ref"],
@@ -193,6 +201,20 @@ TOOLS = [
         },
     },
     {
+        "name": "syncro_delete_ticket",
+        "description": "Permanently delete a Syncro ticket. This cannot be undone.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticket_ref": {
+                    "type": "integer",
+                    "description": "The ticket number as shown in Syncro (e.g. 116627)",
+                },
+            },
+            "required": ["ticket_ref"],
+        },
+    },
+    {
         "name": "syncro_log_time",
         "description": "Log labor/time on a Syncro ticket.",
         "input_schema": {
@@ -254,6 +276,7 @@ async def dispatch_tool(name: str, input: dict) -> str:
                 subject=input["subject"],
                 description=input.get("description"),
                 issue_type=input.get("issue_type", "Remote Break/Fix"),
+                assigned_to=input.get("assigned_to"),
             )
         elif name == "syncro_update_ticket":
             ref = input.get("ticket_ref") or input.get("ticket_id")
@@ -261,6 +284,7 @@ async def dispatch_tool(name: str, input: dict) -> str:
                 ticket_ref=ref,
                 status=input.get("status"),
                 subject=input.get("subject"),
+                assigned_to=input.get("assigned_to"),
             )
         elif name == "syncro_add_comment":
             ref = input.get("ticket_ref") or input.get("ticket_id")
@@ -269,6 +293,8 @@ async def dispatch_tool(name: str, input: dict) -> str:
                 body=input["body"],
                 hidden=input.get("hidden", False),
             )
+        elif name == "syncro_delete_ticket":
+            result = await syncro.delete_ticket(input["ticket_ref"])
         elif name == "syncro_log_time":
             result = await syncro.log_time(
                 ticket_ref=input["ticket_ref"],

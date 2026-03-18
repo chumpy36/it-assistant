@@ -113,13 +113,17 @@ async def _resolve_ticket_id(client: httpx.AsyncClient, ticket_ref: int) -> tupl
         t = resp.json().get("ticket", {})
         return t["id"], t["customer_id"]
 
-    # Try searching by ticket number
-    resp2 = await client.get(f"{BASE_URL}/tickets", params={"number": ticket_ref}, headers=_headers())
-    resp2.raise_for_status()
-    tickets = resp2.json().get("tickets", [])
-    if not tickets:
-        raise ValueError(f"No ticket found with number or id '{ticket_ref}'")
-    return tickets[0]["id"], tickets[0]["customer_id"]
+    # Try searching by ticket number across all statuses (closed tickets won't appear in default list)
+    for status in [None, "Resolved", "Closed"]:
+        params: dict = {"number": ticket_ref}
+        if status:
+            params["status"] = status
+        resp2 = await client.get(f"{BASE_URL}/tickets", params=params, headers=_headers())
+        resp2.raise_for_status()
+        tickets = resp2.json().get("tickets", [])
+        if tickets:
+            return tickets[0]["id"], tickets[0]["customer_id"]
+    raise ValueError(f"No ticket found with number or id '{ticket_ref}'")
 
 
 async def list_tickets(
@@ -153,6 +157,10 @@ async def list_tickets(
             if filtered:
                 tickets = filtered
 
+        # Always exclude resolved/closed unless explicitly requested
+        if not status or status.lower() not in ("resolved", "closed"):
+            tickets = [t for t in tickets if t.get("status") not in ("Resolved", "Closed")]
+
         MAX = 25
         summary = [
             {
@@ -164,6 +172,7 @@ async def list_tickets(
                 "customer": t.get("customer_business_name") or t.get("customer_id"),
                 "created_at": t.get("created_at"),
                 "updated_at": t.get("updated_at"),
+                "customer_reply": t.get("customer_reply", False),
             }
             for t in tickets[:MAX]
         ]
@@ -249,6 +258,7 @@ async def create_ticket(
     contact_name: str | None = None,
     description: str | None = None,
     issue_type: str = "Remote Break/Fix",
+    assigned_to: str | None = None,
 ) -> dict:
     async with httpx.AsyncClient() as client:
         if customer_id is None:
@@ -266,16 +276,35 @@ async def create_ticket(
             contact_id = await _find_contact_id(client, customer_id, contact_name)
             if contact_id:
                 payload["contact_id"] = contact_id
+        if assigned_to:
+            user_id = await _find_user_id(client, assigned_to)
+            payload["user_id"] = user_id
 
         resp = await client.post(f"{BASE_URL}/tickets", json=payload, headers=_headers())
         resp.raise_for_status()
         ticket = resp.json().get("ticket", resp.json())
+        internal_id = ticket.get("id")
+
+        # Syncro doesn't support a description field on create — post it as the first comment
+        if description and internal_id:
+            comment_payload = {
+                "subject": "Issue Description",
+                "body": description,
+                "hidden": False,
+                "do_not_email": True,
+            }
+            await client.post(
+                f"{BASE_URL}/tickets/{internal_id}/comment",
+                json=comment_payload,
+                headers=_headers(),
+            )
+
         return {
             "success": True,
             "message": "Ticket created",
-            "id": ticket.get("id"),
+            "id": internal_id,
             "number": ticket.get("number"),
-            "url": ticket_url(ticket.get("id")),
+            "url": ticket_url(internal_id),
             "subject": ticket.get("subject"),
             "customer": ticket.get("customer_business_name"),
             "contact_id": ticket.get("contact_id"),
@@ -286,16 +315,20 @@ async def update_ticket(
     ticket_ref: int,
     status: str | None = None,
     subject: str | None = None,
+    assigned_to: str | None = None,
 ) -> dict:
     payload = {}
     if status:
         payload["status"] = status
     if subject:
         payload["subject"] = subject
-    if not payload:
-        raise ValueError("No update fields provided. Specify status or subject.")
+    if not payload and not assigned_to:
+        raise ValueError("No update fields provided. Specify status, subject, or assigned_to.")
 
     async with httpx.AsyncClient() as client:
+        if assigned_to:
+            user_id = await _find_user_id(client, assigned_to)
+            payload["user_id"] = user_id
         internal_id, _ = await _resolve_ticket_id(client, ticket_ref)
         resp = await client.put(f"{BASE_URL}/tickets/{internal_id}", json=payload, headers=_headers())
         resp.raise_for_status()
@@ -313,21 +346,29 @@ async def update_ticket(
 
 async def add_comment(ticket_ref: int, body: str, hidden: bool = False) -> dict:
     payload = {
-        "comment": {
-            "body": body,
-            "hidden": hidden,
-            "do_not_email": hidden,
-        }
+        "subject": "Internal Note" if hidden else "Comment",
+        "body": body,
+        "hidden": hidden,
+        "do_not_email": hidden,
     }
     async with httpx.AsyncClient() as client:
         internal_id, _ = await _resolve_ticket_id(client, ticket_ref)
         resp = await client.post(
-            f"{BASE_URL}/tickets/{internal_id}/comments",
+            f"{BASE_URL}/tickets/{internal_id}/comment",
             json=payload,
             headers=_headers(),
         )
         resp.raise_for_status()
         comment = resp.json().get("comment", resp.json())
+
+        # If this is a customer-visible reply, clear the customer_reply flag
+        if not hidden:
+            await client.put(
+                f"{BASE_URL}/tickets/{internal_id}",
+                json={"customer_reply": False},
+                headers=_headers(),
+            )
+
         return {
             "success": True,
             "message": "Comment added",
@@ -381,6 +422,18 @@ async def log_time(
             "hours": hours,
             "notes": notes,
             "url": ticket_url(internal_id),
+        }
+
+
+async def delete_ticket(ticket_ref: int) -> dict:
+    async with httpx.AsyncClient() as client:
+        internal_id, _ = await _resolve_ticket_id(client, ticket_ref)
+        resp = await client.delete(f"{BASE_URL}/tickets/{internal_id}", headers=_headers())
+        resp.raise_for_status()
+        return {
+            "success": True,
+            "message": f"Ticket {ticket_ref} deleted",
+            "ticket_id": internal_id,
         }
 
 

@@ -34,7 +34,7 @@ When asked what needs attention, what to work on, or for a morning briefing:
 1. Call syncro_list_tickets with status="New" — these need triage
 2. Call syncro_list_tickets with status="In Progress" — check for stalled tickets
 3. Call syncro_list_tickets with status="Waiting on Customer" — check for customer replies
-4. Summarize: new tickets first, then any In Progress tickets not updated in 2+ days, then Waiting on Customer tickets where customer has replied (updated_at is recent)
+4. Summarize: new tickets first, then any In Progress tickets not updated in 2+ days, then Waiting on Customer tickets. For Waiting on Customer tickets, show each ticket on its own line — if customer_reply=true, prepend 🔔 to that ticket's row (e.g. "🔔 [#116959](url) | subject | customer"). Do NOT use 🔔 as a section header. Do NOT show 🔔 on New or In Progress tickets.
 5. Also mention Todoist tasks due today if relevant
 
 ## Customer Ticket History
@@ -42,9 +42,13 @@ When asked what needs attention, what to work on, or for a morning briefing:
 - This gives context — e.g. if the same customer has had recurring issues
 
 ## Technicians
-- "my tickets" / "Jason's tickets" / "mine" → assigned_to="Jason"
+- "my tickets" / "Jason's tickets" / "mine" → assigned_to="Jason", no status filter (Syncro default returns active tickets only)
 - "Rex's tickets" → assigned_to="Rex"
 - Always use assigned_to filter when a specific technician is mentioned or implied
+- "assign to me" / "assign to Jason" → use assigned_to="Jason" in create or update ticket
+- "assign to Rex" → use assigned_to="Rex" in create or update ticket
+- Never show Resolved or Closed tickets in results unless the user explicitly asks for them — filter them out of any list before displaying
+- When listing tickets for a technician (e.g. "my tickets", "Jason's tickets"), prepend 🔔 to each individual ticket row that has customer_reply=true — do not use it as a section header
 
 ## Ticket Search
 - "Find tickets about VPN" → use keyword search
@@ -55,6 +59,11 @@ When asked what needs attention, what to work on, or for a morning briefing:
 - If a search fails, retry with alternate spellings the user mentioned (e.g. "PGA", "Pro-Georgia") before asking for clarification
 - The search supports partial and fuzzy matching, so pass the most natural form of the name
 
+## Personality
+- You have a dry, sardonic wit — use it when the situation calls for it, but keep it brief
+- One-liners are fine, novels are not
+- Don't force it — let it happen naturally
+
 ## General
 - Be concise — short responses are better than long ones
 - Ticket lists: show number (as link), subject, customer only — no timestamps unless asked
@@ -63,6 +72,7 @@ When asked what needs attention, what to work on, or for a morning briefing:
 - If a customer name matches multiple customers, list the matches and ask for clarification
 - For ambiguous requests, ask one focused clarifying question
 - No raw JSON, no unnecessary formatting
+- When a tool returns an error, ALWAYS report the exact error message to the user — never say it "failed silently" or omit the details. Show the full error text so the issue can be diagnosed.
 """
 
 
@@ -124,3 +134,49 @@ async def chat(messages: list[dict]) -> str:
                 block.text for block in response.content if hasattr(block, "text")
             ]
             return "\n".join(text_parts) or f"[Stopped: {response.stop_reason}]"
+
+
+async def chat_stream(messages: list[dict]):
+    """Stream the final text response as an async generator of text chunks."""
+    client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    messages = _trim_history(messages)
+    loop = 0
+
+    while True:
+        loop += 1
+        t0 = time.time()
+
+        async with client.messages.stream(
+            model=MODEL,
+            max_tokens=2048,
+            system=SYSTEM_PROMPT,
+            tools=TOOLS,
+            messages=messages,
+        ) as stream:
+            # Yields text chunks in real-time for end_turn responses;
+            # tool_use responses produce no text so this loop exits immediately.
+            async for chunk in stream.text_stream:
+                yield chunk
+
+            final_msg = await stream.get_final_message()
+
+        print(f"[timing] stream loop={loop} stop={final_msg.stop_reason} {time.time()-t0:.2f}s", flush=True)
+
+        if final_msg.stop_reason == "end_turn":
+            return
+
+        if final_msg.stop_reason == "tool_use":
+            messages = messages + [{"role": "assistant", "content": final_msg.content}]
+            tool_blocks = [b for b in final_msg.content if b.type == "tool_use"]
+
+            async def run_tool(block):
+                t1 = time.time()
+                result = await dispatch_tool(block.name, block.input)
+                print(f"[timing]   tool={block.name} {time.time()-t1:.2f}s", flush=True)
+                return {"type": "tool_result", "tool_use_id": block.id, "content": result}
+
+            tool_results = await asyncio.gather(*[run_tool(b) for b in tool_blocks])
+            messages = messages + [{"role": "user", "content": list(tool_results)}]
+        else:
+            yield f"\n[Stopped: {final_msg.stop_reason}]"
+            return

@@ -2,10 +2,10 @@
 
 import json
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from app.ai import chat
+from app.ai import chat, chat_stream
 
 app = FastAPI(title="IT Assistant")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -131,6 +131,23 @@ async def chat_endpoint(req: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/chat/stream")
+async def chat_stream_endpoint(req: ChatRequest):
+    async def event_generator():
+        try:
+            async for chunk in chat_stream(req.messages):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield "data: {\"done\": true}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/manifest.json")
 async def manifest():
     return JSONResponse({
@@ -168,4 +185,4 @@ self.addEventListener('fetch', e => {
 
 @app.get("/")
 async def index():
-    return FileResponse("static/app.html")
+    return FileResponse("static/app.html", headers={"Cache-Control": "no-store"})

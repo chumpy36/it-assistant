@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-title" content="HIT Assistant">
   <meta name="theme-color" content="#080b12">
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/static/logo.png" type="image/png">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080b12'/><text x='16' y='23' font-family='Arial,sans-serif' font-weight='bold' font-size='16' fill='%235fc4e8' text-anchor='middle'>HI</text></svg>">
   <title>Holland IT Assistant</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -586,7 +586,7 @@
 <body>
 <div id="app">
   <header>
-    <img src="/static/logo.png" alt="Holland IT" class="logo">
+    <img src="/static/favicon.svg" alt="Holland IT" class="logo">
     <div class="header-text">
       <h1>Holland I.T.</h1>
       <span class="header-sub">AI Assistant</span>
@@ -710,7 +710,7 @@
   <div id="main-col">
   <div id="messages">
     <div class="welcome" id="welcome">
-      <img src="/static/logo.png" alt="Holland IT" class="welcome-logo">
+      <img src="/static/favicon.svg" alt="Holland IT" class="welcome-logo">
       <h2>Holland I.T. Assistant</h2>
       <div class="tagline">Syncro · Todoist · AI</div>
       <div class="examples-grid">
@@ -755,6 +755,15 @@
   const inputEl = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
   const welcomeEl = document.getElementById('welcome');
+
+  // Open ticket links in a dedicated named window (works in PWA standalone mode too)
+  messagesEl.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (a) {
+      e.preventDefault();
+      window.open(a.href, 'syncro_ticket');
+    }
+  });
 
   inputEl.addEventListener('input', () => {
     inputEl.style.height = 'auto';
@@ -806,27 +815,63 @@
     isLoading = true;
 
     const thinkingEl = appendThinking();
+    let assistantDiv = null;
+    let fullText = '';
 
     try {
-      const res = await fetch('/chat', {
+      const res = await fetch('/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history }),
       });
 
-      thinkingEl.remove();
-
       if (!res.ok) {
+        thinkingEl.remove();
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         appendMessage('assistant', `Error: ${err.detail || res.statusText}`);
         return;
       }
 
-      const data = await res.json();
-      const reply = data.content || '';
-      history.push({ role: 'assistant', content: reply });
-      appendMessage('assistant', reply);
-      appendActionChips(reply);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+          try {
+            const data = JSON.parse(jsonStr);
+            if (data.done) break;
+            if (data.error) {
+              thinkingEl.remove();
+              appendMessage('assistant', `Error: ${data.error}`);
+              return;
+            }
+            if (data.text) {
+              if (!assistantDiv) {
+                thinkingEl.remove();
+                assistantDiv = createStreamingMessage();
+              }
+              fullText += data.text;
+              updateStreamingMessage(assistantDiv, fullText);
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (fullText) {
+        history.push({ role: 'assistant', content: fullText });
+        appendActionChips(fullText);
+      }
 
     } catch (err) {
       thinkingEl.remove();
@@ -835,6 +880,26 @@
       isLoading = false;
       sendBtn.disabled = !inputEl.value.trim();
     }
+  }
+
+  function createStreamingMessage() {
+    const div = document.createElement('div');
+    div.className = 'message assistant';
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = '▸ assistant';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    div.appendChild(label);
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function updateStreamingMessage(div, text) {
+    div.querySelector('.bubble').innerHTML = renderMarkdown(text);
+    scrollToBottom();
   }
 
   function appendMessage(role, text) {
@@ -953,8 +1018,8 @@
       return `<pre><code>${code.trim()}</code></pre>`;
     });
 
-    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-    html = html.replace(/(^|[\s>])(https?:\/\/[^\s<"]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="syncro_ticket">$1</a>');
+    html = html.replace(/(^|[\s>])(https?:\/\/[^\s<"]+)/g, '$1<a href="$2" target="syncro_ticket">$2</a>');
 
     html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
