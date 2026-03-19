@@ -833,11 +833,17 @@
   const sendBtn = document.getElementById('send-btn');
   const welcomeEl = document.getElementById('welcome');
 
-  // Open ticket links in a dedicated named window (works in PWA standalone mode too)
+  // Ticket links load in the assistant; other links open externally
   messagesEl.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
-    if (a) {
-      e.preventDefault();
+    if (!a) return;
+    e.preventDefault();
+    const ticketNum = a.href.match(/\/tickets\/\d+/) && a.textContent.replace(/[^0-9]/g, '');
+    if (ticketNum) {
+      inputEl.value = `Show ticket ${ticketNum}`;
+      inputEl.dispatchEvent(new Event('input'));
+      sendMessage();
+    } else {
       window.open(a.href, 'syncro_ticket');
     }
   });
