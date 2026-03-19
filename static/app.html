@@ -1084,10 +1084,11 @@
     if (!links.length) return;
 
     links.forEach(a => {
-      const internalId = a.href.split('/tickets/').pop().split('?')[0];
+      const ticketNum = a.textContent.replace(/[^0-9]/g, '');
+      if (!ticketNum) return;
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.value = internalId;
+      cb.value = ticketNum;
       cb.className = 'ticket-select-cb';
       cb.addEventListener('change', () => updateBatchBar(bubble));
       a.insertAdjacentElement('beforebegin', cb);
@@ -1146,7 +1147,7 @@
       const res = await fetch('/tickets/batch-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket_ids: ids }),
+        body: JSON.stringify({ ticket_refs: ids }),
       });
       const data = await res.json();
       const ok = data.results.filter(r => r.success).length;

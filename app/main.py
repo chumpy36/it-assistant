@@ -16,7 +16,7 @@ class ChatRequest(BaseModel):
 
 
 class BatchDeleteRequest(BaseModel):
-    ticket_ids: list[int]  # internal IDs from ticket URLs
+    ticket_refs: list[int]  # public ticket numbers
 
 
 @app.get("/health")
@@ -129,24 +129,18 @@ async def debug_todoist():
 @app.post("/tickets/batch-delete")
 async def batch_delete_tickets(req: BatchDeleteRequest):
     import asyncio
-    import httpx
-    from app.syncro import _headers, BASE_URL
-
-    async def _delete_one(tid: int):
-        async with httpx.AsyncClient() as client:
-            resp = await client.delete(f"{BASE_URL}/tickets/{tid}", headers=_headers())
-            resp.raise_for_status()
+    from app.syncro import delete_ticket
 
     results = await asyncio.gather(
-        *[_delete_one(tid) for tid in req.ticket_ids],
+        *[delete_ticket(ref) for ref in req.ticket_refs],
         return_exceptions=True,
     )
     out = []
-    for tid, res in zip(req.ticket_ids, results):
+    for ref, res in zip(req.ticket_refs, results):
         if isinstance(res, Exception):
-            out.append({"ticket_id": tid, "success": False, "error": str(res)})
+            out.append({"ticket_ref": ref, "success": False, "error": str(res)})
         else:
-            out.append({"ticket_id": tid, "success": True})
+            out.append({"ticket_ref": ref, "success": True})
     return {"results": out}
 
 
