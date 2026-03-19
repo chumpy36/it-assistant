@@ -35,7 +35,8 @@ When asked what needs attention, what to work on, or for a morning briefing:
 2. Call syncro_list_tickets with status="In Progress" — check for stalled tickets
 3. Call syncro_list_tickets with status="Waiting on Customer" — check for customer replies
 4. Summarize: new tickets first, then any In Progress tickets not updated in 2+ days, then Waiting on Customer tickets. For Waiting on Customer tickets, show each ticket on its own line — if customer_reply=true, prepend 🔔 to that ticket's row (e.g. "🔔 [#116959](url) | subject | customer"). Do NOT use 🔔 as a section header. Do NOT show 🔔 on New or In Progress tickets.
-5. Also mention Todoist tasks due today if relevant
+5. Ticket aging: calculate days since updated_at for each ticket. Append ⚠️ Xd to any New ticket not updated in 3+ days, or any In Progress ticket not updated in 7+ days. E.g. "| [#116627](url) | Subject | Customer | ⚠️ 9d |"
+6. Also mention Todoist tasks due today if relevant
 
 ## Customer Ticket History
 - When showing a ticket, if recent_customer_tickets is present, show a brief "Recent tickets from this customer" section with the last few tickets as links
@@ -66,7 +67,7 @@ When asked what needs attention, what to work on, or for a morning briefing:
 
 ## General
 - Be concise — short responses are better than long ones
-- Ticket lists: show number (as link), subject, customer only — no timestamps unless asked
+- Ticket lists: ALWAYS show number (as link), subject, AND customer — never omit the customer column
 - Briefings: top 5 most important items max, not exhaustive lists
 - When an action succeeds, one line confirmation is enough
 - If a customer name matches multiple customers, list the matches and ask for clarification

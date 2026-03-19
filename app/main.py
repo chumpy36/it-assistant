@@ -144,6 +144,24 @@ async def batch_delete_tickets(req: BatchDeleteRequest):
     return {"results": out}
 
 
+@app.post("/tickets/batch-resolve")
+async def batch_resolve_tickets(req: BatchDeleteRequest):
+    import asyncio
+    from app.syncro import update_ticket
+
+    results = await asyncio.gather(
+        *[update_ticket(ref, status="Resolved") for ref in req.ticket_refs],
+        return_exceptions=True,
+    )
+    out = []
+    for ref, res in zip(req.ticket_refs, results):
+        if isinstance(res, Exception):
+            out.append({"ticket_ref": ref, "success": False, "error": str(res)})
+        else:
+            out.append({"ticket_ref": ref, "success": True})
+    return {"results": out}
+
+
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     try:

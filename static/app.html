@@ -642,6 +642,22 @@
     }
 
     .batch-select-all:hover { color: var(--accent); }
+
+    .batch-resolve-btn {
+      background: #0f2a1a;
+      border: 1px solid #40a870;
+      border-radius: 4px;
+      color: #60d490;
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 0.5px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .batch-resolve-btn:hover { background: #1a4030; }
+    .batch-resolve-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -1014,8 +1030,10 @@
     if (ticketNums.length === 1) {
       const n = ticketNums[0];
       chips = [
-        { label: `↩ reply #${n}`, text: `Reply to ticket ${n}: `, send: false },
-        { label: `⏱ log time #${n}`, text: `Log 1 hour on ticket ${n} for `, send: false },
+        { label: `↩ reply #${n}`, action: () => showReplyTemplates(n) },
+        { label: `⏱ 15m`, text: `Log 0.25 hours on ticket ${n}: `, send: false },
+        { label: `⏱ 30m`, text: `Log 0.5 hours on ticket ${n}: `, send: false },
+        { label: `⏱ 1h`, text: `Log 1 hour on ticket ${n}: `, send: false },
         { label: `🔒 note #${n}`, text: `Add internal note to ticket ${n}: `, send: false },
         { label: `✓ resolve #${n}`, text: `Resolve ticket ${n}`, send: true },
       ];
@@ -1046,6 +1064,11 @@
       btn.className = 'action-chip';
       btn.textContent = c.label;
       btn.onclick = () => {
+        if (c.action) {
+          row.remove();
+          c.action();
+          return;
+        }
         inputEl.value = c.text;
         inputEl.dispatchEvent(new Event('input'));
         row.remove();
@@ -1060,21 +1083,59 @@
     });
 
     if (ticketNums.length > 1) {
-      const batchBtn = document.createElement('button');
-      batchBtn.className = 'action-chip';
-      batchBtn.textContent = `🗑 batch delete`;
-      batchBtn.onclick = () => {
-        row.remove();
-        enableBatchDeleteMode();
-      };
-      row.appendChild(batchBtn);
+      const resolveBtn = document.createElement('button');
+      resolveBtn.className = 'action-chip';
+      resolveBtn.textContent = '✓ batch resolve';
+      resolveBtn.onclick = () => { row.remove(); enableBatchMode('resolve'); };
+      row.appendChild(resolveBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'action-chip';
+      deleteBtn.textContent = '🗑 batch delete';
+      deleteBtn.onclick = () => { row.remove(); enableBatchMode('delete'); };
+      row.appendChild(deleteBtn);
     }
 
     messagesEl.appendChild(row);
     scrollToBottom();
   }
 
-  function enableBatchDeleteMode() {
+  function showReplyTemplates(ticketNum) {
+    const templates = [
+      { label: 'following up', text: `Reply to ticket ${ticketNum}: Just following up — have you had a chance to test this?` },
+      { label: 'issue resolved?', text: `Reply to ticket ${ticketNum}: We believe this has been resolved — please let us know if you're still experiencing any issues.` },
+      { label: 'waiting on you', text: `Reply to ticket ${ticketNum}: Hi! We're waiting on your feedback before we can proceed. Please let us know when you get a chance.` },
+      { label: 'scheduling soon', text: `Reply to ticket ${ticketNum}: We have this on our radar and will reach out soon to schedule time.` },
+      { label: '✏ custom', text: `Reply to ticket ${ticketNum}: ` },
+    ];
+
+    const row = document.createElement('div');
+    row.className = 'action-chips';
+
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:10px;font-family:var(--mono);color:var(--text-dim);letter-spacing:1px;text-transform:uppercase;align-self:center;padding-right:4px;flex-shrink:0;';
+    lbl.textContent = 'reply:';
+    row.appendChild(lbl);
+
+    templates.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'action-chip';
+      btn.textContent = t.label;
+      btn.onclick = () => {
+        inputEl.value = t.text;
+        inputEl.dispatchEvent(new Event('input'));
+        row.remove();
+        inputEl.focus();
+        inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+      };
+      row.appendChild(btn);
+    });
+
+    messagesEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function enableBatchMode(action) {
     const msgs = messagesEl.querySelectorAll('.message.assistant');
     if (!msgs.length) return;
     const bubble = msgs[msgs.length - 1].querySelector('.bubble');
@@ -1090,18 +1151,19 @@
       cb.type = 'checkbox';
       cb.value = ticketNum;
       cb.className = 'ticket-select-cb';
-      cb.addEventListener('change', () => updateBatchBar(bubble));
+      cb.addEventListener('change', () => updateBatchBar(bubble, action));
       a.insertAdjacentElement('beforebegin', cb);
     });
 
     const bar = document.createElement('div');
     bar.className = 'batch-inline-bar';
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'batch-delete-btn';
-    deleteBtn.textContent = 'Delete selected';
-    deleteBtn.disabled = true;
-    deleteBtn.onclick = () => executeBatchDelete(bubble, deleteBtn, bar);
+    const isDelete = action === 'delete';
+    const actionBtn = document.createElement('button');
+    actionBtn.className = isDelete ? 'batch-delete-btn' : 'batch-resolve-btn';
+    actionBtn.textContent = isDelete ? 'Delete selected' : 'Resolve selected';
+    actionBtn.disabled = true;
+    actionBtn.onclick = () => executeBatchAction(bubble, actionBtn, bar, action);
 
     const selectAllBtn = document.createElement('button');
     selectAllBtn.className = 'batch-select-all';
@@ -1111,7 +1173,7 @@
       const anyUnchecked = cbs.some(c => !c.checked);
       cbs.forEach(c => c.checked = anyUnchecked);
       selectAllBtn.textContent = anyUnchecked ? 'deselect all' : 'select all';
-      updateBatchBar(bubble);
+      updateBatchBar(bubble, action);
     };
 
     const cancelBtn = document.createElement('button');
@@ -1122,29 +1184,32 @@
       bar.remove();
     };
 
-    bar.appendChild(deleteBtn);
+    bar.appendChild(actionBtn);
     bar.appendChild(selectAllBtn);
     bar.appendChild(cancelBtn);
     bubble.appendChild(bar);
     scrollToBottom();
   }
 
-  function updateBatchBar(bubble) {
+  function updateBatchBar(bubble, action) {
     const count = bubble.querySelectorAll('.ticket-select-cb:checked').length;
-    const deleteBtn = bubble.querySelector('.batch-delete-btn');
-    if (!deleteBtn) return;
-    deleteBtn.disabled = count === 0;
-    deleteBtn.textContent = count > 0 ? `Delete ${count} ticket${count > 1 ? 's' : ''}` : 'Delete selected';
+    const btn = bubble.querySelector('.batch-delete-btn, .batch-resolve-btn');
+    if (!btn) return;
+    btn.disabled = count === 0;
+    const verb = action === 'delete' ? 'Delete' : 'Resolve';
+    btn.textContent = count > 0 ? `${verb} ${count} ticket${count > 1 ? 's' : ''}` : `${verb} selected`;
   }
 
-  async function executeBatchDelete(bubble, deleteBtn, bar) {
+  async function executeBatchAction(bubble, actionBtn, bar, action) {
     const ids = [...bubble.querySelectorAll('.ticket-select-cb:checked')].map(cb => parseInt(cb.value));
-    deleteBtn.disabled = true;
-    deleteBtn.textContent = `Deleting ${ids.length}...`;
+    const verb = action === 'delete' ? 'Deleting' : 'Resolving';
+    actionBtn.disabled = true;
+    actionBtn.textContent = `${verb} ${ids.length}...`;
     [...bubble.querySelectorAll('.ticket-select-cb')].forEach(cb => cb.disabled = true);
 
+    const endpoint = action === 'delete' ? '/tickets/batch-delete' : '/tickets/batch-resolve';
     try {
-      const res = await fetch('/tickets/batch-delete', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticket_refs: ids }),
@@ -1154,14 +1219,15 @@
       const fail = data.results.filter(r => !r.success).length;
       [...bubble.querySelectorAll('.ticket-select-cb')].forEach(cb => cb.remove());
       bar.remove();
+      const doneVerb = action === 'delete' ? 'Deleted' : 'Resolved';
       const summary = fail === 0
-        ? `Deleted ${ok} ticket${ok > 1 ? 's' : ''}.`
-        : `Deleted ${ok}, failed ${fail}: ${data.results.filter(r => !r.success).map(r => `id ${r.ticket_id}: ${r.error}`).join('; ')}`;
+        ? `${doneVerb} ${ok} ticket${ok > 1 ? 's' : ''}.`
+        : `${doneVerb} ${ok}, failed ${fail}: ${data.results.filter(r => !r.success).map(r => `#${r.ticket_ref}: ${r.error}`).join('; ')}`;
       appendMessage('assistant', summary);
       history.push({ role: 'assistant', content: summary });
     } catch (err) {
-      deleteBtn.disabled = false;
-      deleteBtn.textContent = `Retry (${ids.length})`;
+      actionBtn.disabled = false;
+      actionBtn.textContent = `Retry (${ids.length})`;
       [...bubble.querySelectorAll('.ticket-select-cb')].forEach(cb => cb.disabled = false);
     }
   }
