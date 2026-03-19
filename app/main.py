@@ -15,6 +15,10 @@ class ChatRequest(BaseModel):
     messages: list[dict]
 
 
+class BatchDeleteRequest(BaseModel):
+    ticket_refs: list[int]
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -120,6 +124,23 @@ async def debug_todoist():
             headers={"Authorization": f"Bearer {token}"},
         )
         return {"status": resp.status_code, "body": resp.json()}
+
+
+@app.post("/tickets/batch-delete")
+async def batch_delete_tickets(req: BatchDeleteRequest):
+    import asyncio
+    from app.syncro import delete_ticket
+    results = await asyncio.gather(
+        *[delete_ticket(ref) for ref in req.ticket_refs],
+        return_exceptions=True,
+    )
+    out = []
+    for ref, res in zip(req.ticket_refs, results):
+        if isinstance(res, Exception):
+            out.append({"ticket_ref": ref, "success": False, "error": str(res)})
+        else:
+            out.append({"ticket_ref": ref, "success": True})
+    return {"results": out}
 
 
 @app.post("/chat")

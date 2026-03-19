@@ -581,6 +581,119 @@
       background: var(--accent-glow);
       border-color: var(--accent);
     }
+
+    /* ── Batch delete panel ── */
+    .batch-delete-panel {
+      background: var(--surface3);
+      border: 1px solid #5a2020;
+      border-left: 2px solid #c94040;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-top: 4px;
+      position: relative;
+      z-index: 1;
+      max-width: 420px;
+    }
+
+    .batch-delete-panel h4 {
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #c94040;
+      margin-bottom: 10px;
+    }
+
+    .batch-ticket-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .batch-ticket-row:last-of-type { border-bottom: none; }
+
+    .batch-ticket-row input[type=checkbox] {
+      margin-top: 2px;
+      accent-color: #c94040;
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    .batch-ticket-label {
+      font-size: 12px;
+      font-family: var(--mono);
+      color: var(--text);
+      line-height: 1.4;
+    }
+
+    .batch-ticket-label .ticket-num {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .batch-ticket-label .ticket-ctx {
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+
+    .batch-delete-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      align-items: center;
+    }
+
+    .batch-delete-btn {
+      background: #3a1010;
+      border: 1px solid #c94040;
+      border-radius: 4px;
+      color: #ff6060;
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 0.5px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .batch-delete-btn:hover { background: #4a1515; }
+    .batch-delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .batch-cancel-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-dim);
+      font-size: 11px;
+      font-family: var(--mono);
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+
+    .batch-select-all {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text-dim);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      margin-left: auto;
+    }
+
+    .batch-select-all:hover { color: var(--accent); }
+
+    .batch-status {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -944,6 +1057,24 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function extractTicketContext(text, ticketNum) {
+    // Try to find a line containing the ticket number and extract surrounding text as context
+    const lines = text.split('\n');
+    for (const line of lines) {
+      if (line.includes(ticketNum)) {
+        // Strip markdown, ticket number itself, and trim
+        const clean = line
+          .replace(/\*\*/g, '')
+          .replace(/[|#\-*]/g, '')
+          .replace(ticketNum, '')
+          .replace(/^\s*\d+\s*/, '')
+          .trim();
+        if (clean.length > 2 && clean.length < 120) return clean;
+      }
+    }
+    return null;
+  }
+
   function appendActionChips(text) {
     const ticketMatches = [...text.matchAll(/\b(1\d{5})\b/g)];
     const ticketNums = [...new Set(ticketMatches.map(m => m[1]))];
@@ -976,7 +1107,7 @@
       ];
     }
 
-    if (!chips.length) return;
+    if (!chips.length && ticketNums.length === 0) return;
 
     const row = document.createElement('div');
     row.className = 'action-chips';
@@ -997,7 +1128,121 @@
       };
       row.appendChild(btn);
     });
+
+    // Add batch delete chip when multiple tickets present
+    if (ticketNums.length > 1) {
+      const batchBtn = document.createElement('button');
+      batchBtn.className = 'action-chip';
+      batchBtn.textContent = `🗑 batch delete`;
+      batchBtn.onclick = () => {
+        row.remove();
+        showBatchDeletePanel(ticketNums, text);
+      };
+      row.appendChild(batchBtn);
+    }
+
     messagesEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function showBatchDeletePanel(ticketNums, sourceText) {
+    const panel = document.createElement('div');
+    panel.className = 'batch-delete-panel';
+
+    const title = document.createElement('h4');
+    title.textContent = `Select tickets to delete`;
+    panel.appendChild(title);
+
+    const checkboxes = [];
+    ticketNums.forEach(num => {
+      const ctx = extractTicketContext(sourceText, num);
+      const row = document.createElement('label');
+      row.className = 'batch-ticket-row';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = num;
+      cb.addEventListener('change', updateDeleteBtn);
+      checkboxes.push(cb);
+
+      const lbl = document.createElement('span');
+      lbl.className = 'batch-ticket-label';
+      lbl.innerHTML = `<span class="ticket-num">#${num}</span>${ctx ? `<br><span class="ticket-ctx">${ctx.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>` : ''}`;
+
+      row.appendChild(cb);
+      row.appendChild(lbl);
+      panel.appendChild(row);
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'batch-delete-actions';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'batch-delete-btn';
+    deleteBtn.textContent = 'Delete selected';
+    deleteBtn.disabled = true;
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'batch-cancel-btn';
+    cancelBtn.textContent = 'cancel';
+    cancelBtn.onclick = () => panel.remove();
+
+    const selectAll = document.createElement('button');
+    selectAll.className = 'batch-select-all';
+    selectAll.textContent = 'select all';
+    selectAll.onclick = () => {
+      const anyUnchecked = checkboxes.some(c => !c.checked);
+      checkboxes.forEach(c => c.checked = anyUnchecked);
+      selectAll.textContent = anyUnchecked ? 'deselect all' : 'select all';
+      updateDeleteBtn();
+    };
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'batch-status';
+
+    function updateDeleteBtn() {
+      const count = checkboxes.filter(c => c.checked).length;
+      deleteBtn.disabled = count === 0;
+      deleteBtn.textContent = count > 0 ? `Delete ${count} ticket${count > 1 ? 's' : ''}` : 'Delete selected';
+    }
+
+    deleteBtn.onclick = async () => {
+      const selected = checkboxes.filter(c => c.checked).map(c => parseInt(c.value));
+      deleteBtn.disabled = true;
+      cancelBtn.disabled = true;
+      checkboxes.forEach(c => c.disabled = true);
+      statusEl.textContent = `Deleting ${selected.length} ticket${selected.length > 1 ? 's' : ''}...`;
+
+      try {
+        const res = await fetch('/tickets/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket_refs: selected }),
+        });
+        const data = await res.json();
+        const ok = data.results.filter(r => r.success).length;
+        const fail = data.results.filter(r => !r.success).length;
+        panel.remove();
+        const summary = fail === 0
+          ? `Deleted ${ok} ticket${ok > 1 ? 's' : ''}.`
+          : `Deleted ${ok}, failed ${fail}: ${data.results.filter(r=>!r.success).map(r=>`#${r.ticket_ref}: ${r.error}`).join('; ')}`;
+        appendMessage('assistant', summary);
+        history.push({ role: 'assistant', content: summary });
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        deleteBtn.disabled = false;
+        cancelBtn.disabled = false;
+        checkboxes.forEach(c => c.disabled = false);
+      }
+    };
+
+    actions.appendChild(deleteBtn);
+    actions.appendChild(cancelBtn);
+    actions.appendChild(selectAll);
+    panel.appendChild(actions);
+    panel.appendChild(statusEl);
+
+    messagesEl.appendChild(panel);
     scrollToBottom();
   }
 
