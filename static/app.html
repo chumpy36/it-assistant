@@ -1025,9 +1025,14 @@
     const ticketMatches = [...text.matchAll(/\b(1\d{5})\b/g)];
     const ticketNums = [...new Set(ticketMatches.map(m => m[1]))];
 
+    // If response is a single ticket detail view (has Status:/Customer: near top),
+    // treat the first ticket number as the primary one regardless of others listed below
+    const isSingleTicketDetail = /Status:|Customer:|Description:/i.test(text.slice(0, 400));
+    const effectiveCount = (isSingleTicketDetail && ticketNums.length > 1) ? 1 : ticketNums.length;
+
     let chips = [];
 
-    if (ticketNums.length === 1) {
+    if (effectiveCount === 1) {
       const n = ticketNums[0];
       chips = [
         { label: `↩ reply #${n}`, action: () => showReplyTemplates(n) },
@@ -1037,7 +1042,7 @@
         { label: `🔒 note #${n}`, text: `Add internal note to ticket ${n}: `, send: false },
         { label: `✓ resolve #${n}`, text: `Resolve ticket ${n}`, send: true },
       ];
-    } else if (ticketNums.length > 1) {
+    } else if (effectiveCount > 1) {
       chips = [
         { label: '⚡ what needs attention?', text: 'What needs attention?', send: true },
         { label: '🎫 open tickets', text: 'Show my open tickets', send: true },
@@ -1082,7 +1087,7 @@
       row.appendChild(btn);
     });
 
-    if (ticketNums.length > 1) {
+    if (effectiveCount > 1) {
       const resolveBtn = document.createElement('button');
       resolveBtn.className = 'action-chip';
       resolveBtn.textContent = '✓ batch resolve';
