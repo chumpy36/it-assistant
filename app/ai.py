@@ -77,7 +77,7 @@ When asked what needs attention, what to work on, or for a morning briefing:
 """
 
 
-def _trim_history(messages: list[dict], keep: int = 6) -> list[dict]:
+def _trim_history(messages: list[dict], keep: int = 4) -> list[dict]:
     """Keep only the last `keep` messages to avoid ballooning context."""
     if len(messages) <= keep:
         return messages

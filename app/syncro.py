@@ -206,26 +206,23 @@ async def get_ticket(ticket_ref: int) -> dict:
                     if t.get("id") != internal_id
                 ][:4]
 
+        comments = ticket.get("comments", [])
         return {
-            "id": ticket.get("id"),
             "number": ticket.get("number"),
             "url": ticket_url(ticket.get("id")),
             "subject": ticket.get("subject"),
             "status": ticket.get("status"),
             "customer": ticket.get("customer_business_name"),
-            "description": ticket.get("problem_type") or ticket.get("description"),
-            "created_at": ticket.get("created_at"),
+            "description": (ticket.get("problem_type") or ticket.get("description") or "")[:500],
             "updated_at": ticket.get("updated_at"),
             "comments": [
                 {
-                    "id": c.get("id"),
-                    "body": c.get("body"),
+                    "body": (c.get("body") or "")[:400],
                     "hidden": c.get("hidden"),
-                    "created_at": c.get("created_at"),
                 }
-                for c in ticket.get("comments", [])
+                for c in comments[-6:]  # last 6 comments only
             ],
-            "recent_customer_tickets": recent,
+            "recent_customer_tickets": recent[:2],
         }
 
 
