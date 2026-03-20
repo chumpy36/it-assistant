@@ -1,11 +1,14 @@
 """FastAPI application entrypoint."""
 
 import json
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from app.ai import chat, chat_stream
+
+JASON_EMAIL = os.environ.get("JASON_EMAIL", "jason.holland@hollandit.biz")
 
 app = FastAPI(title="IT Assistant")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -162,20 +165,28 @@ async def batch_resolve_tickets(req: BatchDeleteRequest):
     return {"results": out}
 
 
+def _include_todoist(request: Request) -> bool:
+    email = request.headers.get("cf-access-authenticated-user-email", "")
+    # No CF header = local dev (assume Jason). CF header present = check email.
+    return not email or email.lower() == JASON_EMAIL.lower()
+
+
 @app.post("/chat")
-async def chat_endpoint(req: ChatRequest):
+async def chat_endpoint(req: ChatRequest, request: Request):
     try:
-        reply = await chat(req.messages)
+        reply = await chat(req.messages, include_todoist=_include_todoist(request))
         return {"role": "assistant", "content": reply}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/chat/stream")
-async def chat_stream_endpoint(req: ChatRequest):
+async def chat_stream_endpoint(req: ChatRequest, request: Request):
+    todoist = _include_todoist(request)
+
     async def event_generator():
         try:
-            async for chunk in chat_stream(req.messages):
+            async for chunk in chat_stream(req.messages, include_todoist=todoist):
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
             yield "data: {\"done\": true}\n\n"
         except Exception as e:

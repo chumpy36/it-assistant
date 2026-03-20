@@ -257,6 +257,15 @@ TOOLS = [
 ]
 
 
+TODOIST_TOOL_NAMES = {"todoist_list_tasks", "todoist_create_task", "todoist_complete_task", "todoist_list_projects"}
+
+
+def get_tools(include_todoist: bool = True) -> list:
+    if include_todoist:
+        return TOOLS
+    return [t for t in TOOLS if t["name"] not in TODOIST_TOOL_NAMES]
+
+
 async def dispatch_tool(name: str, input: dict) -> str:
     try:
         if name == "syncro_list_tickets":

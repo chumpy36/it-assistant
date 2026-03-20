@@ -4,7 +4,7 @@ import os
 import time
 import asyncio
 import anthropic
-from app.tools import TOOLS, dispatch_tool
+from app.tools import get_tools, dispatch_tool
 
 MODEL = "claude-haiku-4-5-20251001"
 
@@ -89,10 +89,11 @@ def _trim_history(messages: list[dict], keep: int = 4) -> list[dict]:
     return trimmed
 
 
-async def chat(messages: list[dict]) -> str:
+async def chat(messages: list[dict], include_todoist: bool = True) -> str:
     client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     total_start = time.time()
     loop = 0
+    tools = get_tools(include_todoist)
 
     # Trim history to keep context small
     messages = _trim_history(messages)
@@ -104,7 +105,7 @@ async def chat(messages: list[dict]) -> str:
             model=MODEL,
             max_tokens=1024,
             system=SYSTEM_PROMPT,
-            tools=TOOLS,
+            tools=tools,
             messages=messages,
         )
         print(f"[timing] loop={loop} claude={time.time()-t0:.2f}s stop={response.stop_reason}", flush=True)
@@ -137,10 +138,11 @@ async def chat(messages: list[dict]) -> str:
             return "\n".join(text_parts) or f"[Stopped: {response.stop_reason}]"
 
 
-async def chat_stream(messages: list[dict]):
+async def chat_stream(messages: list[dict], include_todoist: bool = True):
     """Stream the final text response as an async generator of text chunks."""
     client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     messages = _trim_history(messages)
+    tools = get_tools(include_todoist)
     loop = 0
 
     while True:
@@ -151,7 +153,7 @@ async def chat_stream(messages: list[dict]):
             model=MODEL,
             max_tokens=1024,
             system=SYSTEM_PROMPT,
-            tools=TOOLS,
+            tools=tools,
             messages=messages,
         ) as stream:
             # Yields text chunks in real-time for end_turn responses;
