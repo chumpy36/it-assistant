@@ -1093,6 +1093,20 @@
       row.appendChild(btn);
     });
 
+    if (effectiveCount === 1 && isSingleTicketDetail) {
+      const msgs = messagesEl.querySelectorAll('.message.assistant');
+      if (msgs.length) {
+        const link = msgs[msgs.length - 1].querySelector('.bubble a[href*="/tickets/"]');
+        if (link) {
+          const syncroBtn = document.createElement('button');
+          syncroBtn.className = 'action-chip';
+          syncroBtn.textContent = '↗ open in syncro';
+          syncroBtn.onclick = () => window.open(link.href, 'syncro_ticket');
+          row.appendChild(syncroBtn);
+        }
+      }
+    }
+
     if (effectiveCount > 1) {
       const resolveBtn = document.createElement('button');
       resolveBtn.className = 'action-chip';
@@ -1236,6 +1250,7 @@
         : `${doneVerb} ${ok}, failed ${fail}: ${data.results.filter(r => !r.success).map(r => `#${r.ticket_ref}: ${r.error}`).join('; ')}`;
       appendMessage('assistant', summary);
       history.push({ role: 'assistant', content: summary });
+      appendActionChips(summary);
     } catch (err) {
       actionBtn.disabled = false;
       actionBtn.textContent = `Retry (${ids.length})`;
