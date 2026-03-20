@@ -102,7 +102,7 @@ async def chat(messages: list[dict]) -> str:
         t0 = time.time()
         response = await client.messages.create(
             model=MODEL,
-            max_tokens=2048,
+            max_tokens=1024,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
@@ -149,7 +149,7 @@ async def chat_stream(messages: list[dict]):
 
         async with client.messages.stream(
             model=MODEL,
-            max_tokens=2048,
+            max_tokens=1024,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,

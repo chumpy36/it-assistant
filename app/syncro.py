@@ -161,16 +161,14 @@ async def list_tickets(
         if not status or status.lower() not in ("resolved", "closed"):
             tickets = [t for t in tickets if t.get("status") not in ("Resolved", "Closed")]
 
-        MAX = 25
+        MAX = 15
         summary = [
             {
-                "id": t.get("id"),
                 "number": t.get("number"),
                 "url": ticket_url(t.get("id")),
                 "subject": t.get("subject"),
                 "status": t.get("status"),
                 "customer": t.get("customer_business_name") or t.get("customer_id"),
-                "created_at": t.get("created_at"),
                 "updated_at": t.get("updated_at"),
                 "customer_reply": t.get("customer_reply", False),
             }
