@@ -1,12 +1,14 @@
 """FastAPI application entrypoint."""
 
+import asyncio
 import json
 import os
+import time
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from app.ai import chat, chat_stream
+from app.ai import chat, chat_stream, chat_stream_briefing
 
 JASON_EMAIL = os.environ.get("JASON_EMAIL", "jason.holland@hollandit.biz")
 
@@ -169,6 +171,49 @@ def _include_todoist(request: Request) -> bool:
     email = request.headers.get("cf-access-authenticated-user-email", "")
     # No CF header = local dev (assume Jason). CF header present = check email.
     return not email or email.lower() == JASON_EMAIL.lower()
+
+
+@app.get("/briefing/stream")
+async def briefing_stream_endpoint(request: Request):
+    """Pre-fetch all ticket data in parallel, then stream briefing from a single Claude call."""
+    from app import syncro, todoist
+
+    todoist_ok = _include_todoist(request)
+
+    async def event_generator():
+        try:
+            t0 = time.time()
+            fetch_tasks = [
+                syncro.list_tickets(status="New"),
+                syncro.list_tickets(status="In Progress"),
+                syncro.list_tickets(status="Waiting on Customer"),
+            ]
+            if todoist_ok:
+                fetch_tasks.append(todoist.list_tasks(filter="today | overdue"))
+
+            results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+            data = {
+                "new_tickets": results[0] if not isinstance(results[0], Exception) else {"error": str(results[0])},
+                "in_progress_tickets": results[1] if not isinstance(results[1], Exception) else {"error": str(results[1])},
+                "waiting_tickets": results[2] if not isinstance(results[2], Exception) else {"error": str(results[2])},
+            }
+            if todoist_ok and len(results) > 3:
+                data["todoist_today"] = results[3] if not isinstance(results[3], Exception) else {"error": str(results[3])}
+
+            print(f"[timing] briefing prefetch {time.time()-t0:.2f}s", flush=True)
+
+            async for chunk in chat_stream_briefing(data, include_todoist=todoist_ok):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield 'data: {"done": true}\n\n'
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/chat")

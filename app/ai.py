@@ -8,6 +8,32 @@ from app.tools import get_tools, dispatch_tool
 
 MODEL = "claude-haiku-4-5-20251001"
 
+# Module-level client — created once, reused across requests (connection pooling).
+# Lazy-initialized so env vars are guaranteed to be set before first use.
+_client: anthropic.AsyncAnthropic | None = None
+
+
+def _get_client() -> anthropic.AsyncAnthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.AsyncAnthropic(
+            api_key=os.environ["ANTHROPIC_API_KEY"],
+            timeout=45.0,  # prevent 38s+ hangs on API spikes
+        )
+    return _client
+
+
+BRIEFING_SYSTEM = """You are an IT assistant for Holland IT. Given pre-fetched ticket and task data, produce a concise morning briefing.
+
+Format rules:
+- Ticket links: [#NUMBER](URL)
+- 🔔 before any ticket row where customer_reply=true
+- ⚠️ Xd appended to New tickets not updated in 3+ days, In Progress tickets not updated in 7+ days (calculate days from updated_at vs current time)
+- Show max 8 most important items total — new tickets first, then stalled In Progress, then customer replies
+- Table format: | [#NUM](url) | Subject | Customer |
+- List any overdue/today Todoist tasks briefly after tickets if present
+- No preamble, no closing remarks — just the data"""
+
 SYSTEM_PROMPT = """You are an IT professional assistant for Holland IT, helping manage Syncro MSP tickets and Todoist tasks via natural language.
 
 ## Syncro MSP
@@ -89,8 +115,29 @@ def _trim_history(messages: list[dict], keep: int = 4) -> list[dict]:
     return trimmed
 
 
+async def chat_stream_briefing(data: dict, include_todoist: bool = True):
+    """Stream a morning briefing from pre-fetched data. Single Claude call, no tool loop."""
+    from datetime import datetime, timezone
+    import json
+
+    client = _get_client()
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    context = f"Current time: {now_str}\n\n{json.dumps(data, indent=2)}"
+
+    t0 = time.time()
+    async with client.messages.stream(
+        model=MODEL,
+        max_tokens=800,
+        system=BRIEFING_SYSTEM,
+        messages=[{"role": "user", "content": context}],
+    ) as stream:
+        async for chunk in stream.text_stream:
+            yield chunk
+    print(f"[timing] briefing single-call {time.time()-t0:.2f}s", flush=True)
+
+
 async def chat(messages: list[dict], include_todoist: bool = True) -> str:
-    client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = _get_client()
     total_start = time.time()
     loop = 0
     tools = get_tools(include_todoist)
@@ -140,7 +187,7 @@ async def chat(messages: list[dict], include_todoist: bool = True) -> str:
 
 async def chat_stream(messages: list[dict], include_todoist: bool = True):
     """Stream the final text response as an async generator of text chunks."""
-    client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = _get_client()
     messages = _trim_history(messages)
     tools = get_tools(include_todoist)
     loop = 0

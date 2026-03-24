@@ -902,11 +902,15 @@
     let fullText = '';
 
     try {
-      const res = await fetch('/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
-      });
+      // Briefing queries bypass the agentic tool loop — data is pre-fetched server-side
+      const isBriefing = /\b(morning briefing|what needs attention|briefing|what'?s? (going on|happening|up))\b/i.test(text);
+      const res = isBriefing
+        ? await fetch('/briefing/stream')
+        : await fetch('/chat/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: history }),
+          });
 
       if (!res.ok) {
         thinkingEl.remove();
