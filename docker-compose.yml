@@ -6,6 +6,10 @@ services:
       - "8123:8000"
     env_file:
       - .env
+    volumes:
+      - ./gcal_credentials.json:/app/gcal_credentials.json:ro
+      - ./gmail_token_personal.json:/app/gmail_token_personal.json
+      - ./gmail_token_biz.json:/app/gmail_token_biz.json
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

@@ -1,7 +1,7 @@
 """Tool definitions and dispatch for Claude tool-use."""
 
 import json
-from app import syncro, todoist
+from app import syncro, todoist, gmail
 
 TOOLS = [
     {
@@ -254,16 +254,40 @@ TOOLS = [
             "required": ["ticket_ref"],
         },
     },
+    {
+        "name": "check_emails",
+        "description": "Check recent unread emails from Jason's personal (jlh1825@gmail.com) and/or business (jason.holland@hollandit.biz) Gmail inboxes. Returns emails from the last 24 hours by default. Use your judgment to surface only important ones.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string",
+                    "enum": ["personal", "business", "both"],
+                    "description": "Which inbox to check. Default: both",
+                },
+                "hours": {
+                    "type": "integer",
+                    "description": "How many hours back to look. Default: 24",
+                },
+            },
+        },
+    },
 ]
 
 
 TODOIST_TOOL_NAMES = {"todoist_list_tasks", "todoist_create_task", "todoist_complete_task", "todoist_list_projects"}
+EMAIL_TOOL_NAMES = {"check_emails"}
 
 
-def get_tools(include_todoist: bool = True) -> list:
-    if include_todoist:
+def get_tools(include_todoist: bool = True, include_email: bool = True) -> list:
+    excluded = set()
+    if not include_todoist:
+        excluded |= TODOIST_TOOL_NAMES
+    if not include_email:
+        excluded |= EMAIL_TOOL_NAMES
+    if not excluded:
         return TOOLS
-    return [t for t in TOOLS if t["name"] not in TODOIST_TOOL_NAMES]
+    return [t for t in TOOLS if t["name"] not in excluded]
 
 
 async def dispatch_tool(name: str, input: dict) -> str:
@@ -328,6 +352,11 @@ async def dispatch_tool(name: str, input: dict) -> str:
             result = await todoist.complete_task(input["task_id"])
         elif name == "todoist_list_projects":
             result = await todoist.list_projects()
+        elif name == "check_emails":
+            result = await gmail.fetch_emails(
+                account=input.get("account", "both"),
+                hours=input.get("hours", 24),
+            )
         else:
             result = {"error": f"Unknown tool: {name}"}
     except ValueError as e:

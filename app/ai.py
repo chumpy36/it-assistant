@@ -23,15 +23,16 @@ def _get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-BRIEFING_SYSTEM = """You are an IT assistant for Holland IT. Given pre-fetched ticket and task data, produce a concise morning briefing.
+BRIEFING_SYSTEM = """You are an IT assistant for Holland IT. Given pre-fetched ticket, task, and email data, produce a concise morning briefing.
 
 Format rules:
 - Ticket links: [#NUMBER](URL)
 - 🔔 before any ticket row where customer_reply=true
 - ⚠️ Xd appended to New tickets not updated in 3+ days, In Progress tickets not updated in 7+ days (calculate days from updated_at vs current time)
-- Show max 8 most important items total — new tickets first, then stalled In Progress, then customer replies
+- Show max 8 most important ticket items total — new tickets first, then stalled In Progress, then customer replies
 - Table format: | [#NUM](url) | Subject | Customer |
 - List any overdue/today Todoist tasks briefly after tickets if present
+- If email data is present, add a brief "📬 Emails" section after tasks — list only emails that seem genuinely important (client issues, urgent requests, billing, security alerts). Skip newsletters, marketing, notifications. If nothing important, omit the section entirely.
 - No preamble, no closing remarks — just the data"""
 
 SYSTEM_PROMPT = """You are an IT professional assistant for Holland IT, helping manage Syncro MSP tickets and Todoist tasks via natural language.
@@ -86,6 +87,13 @@ When asked what needs attention, what to work on, or for a morning briefing:
 - If a search fails, retry with alternate spellings the user mentioned (e.g. "PGA", "Pro-Georgia") before asking for clarification
 - The search supports partial and fuzzy matching, so pass the most natural form of the name
 
+## Email
+- When asked about emails, call check_emails with account="both" (or "personal"/"business" if specified)
+- Only surface emails that seem genuinely important: client issues, urgent requests, billing, security alerts, vendor problems
+- Skip newsletters, marketing, automated notifications, receipts unless they seem relevant
+- Format: brief list — From | Subject | one-line summary of why it matters
+- If nothing important, say so in one line
+
 ## Personality
 - You have a dry, sardonic wit — use it when the situation calls for it, but keep it brief
 - One-liners are fine, novels are not
@@ -115,7 +123,7 @@ def _trim_history(messages: list[dict], keep: int = 4) -> list[dict]:
     return trimmed
 
 
-async def chat_stream_briefing(data: dict, include_todoist: bool = True):
+async def chat_stream_briefing(data: dict, include_todoist: bool = True, include_email: bool = True):
     """Stream a morning briefing from pre-fetched data. Single Claude call, no tool loop."""
     from datetime import datetime, timezone
     import json
@@ -136,11 +144,11 @@ async def chat_stream_briefing(data: dict, include_todoist: bool = True):
     print(f"[timing] briefing single-call {time.time()-t0:.2f}s", flush=True)
 
 
-async def chat(messages: list[dict], include_todoist: bool = True) -> str:
+async def chat(messages: list[dict], include_todoist: bool = True, include_email: bool = True) -> str:
     client = _get_client()
     total_start = time.time()
     loop = 0
-    tools = get_tools(include_todoist)
+    tools = get_tools(include_todoist, include_email)
 
     # Trim history to keep context small
     messages = _trim_history(messages)
@@ -185,11 +193,11 @@ async def chat(messages: list[dict], include_todoist: bool = True) -> str:
             return "\n".join(text_parts) or f"[Stopped: {response.stop_reason}]"
 
 
-async def chat_stream(messages: list[dict], include_todoist: bool = True):
+async def chat_stream(messages: list[dict], include_todoist: bool = True, include_email: bool = True):
     """Stream the final text response as an async generator of text chunks."""
     client = _get_client()
     messages = _trim_history(messages)
-    tools = get_tools(include_todoist)
+    tools = get_tools(include_todoist, include_email)
     loop = 0
 
     while True:

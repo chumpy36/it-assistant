@@ -167,7 +167,7 @@ async def batch_resolve_tickets(req: BatchDeleteRequest):
     return {"results": out}
 
 
-def _include_todoist(request: Request) -> bool:
+def _is_jason(request: Request) -> bool:
     email = request.headers.get("cf-access-authenticated-user-email", "")
     # No CF header = local dev (assume Jason). CF header present = check email.
     return not email or email.lower() == JASON_EMAIL.lower()
@@ -175,10 +175,10 @@ def _include_todoist(request: Request) -> bool:
 
 @app.get("/briefing/stream")
 async def briefing_stream_endpoint(request: Request):
-    """Pre-fetch all ticket data in parallel, then stream briefing from a single Claude call."""
-    from app import syncro, todoist
+    """Pre-fetch all ticket, task, and email data in parallel, then stream briefing from a single Claude call."""
+    from app import syncro, todoist, gmail
 
-    todoist_ok = _include_todoist(request)
+    jason = _is_jason(request)
 
     async def event_generator():
         try:
@@ -188,8 +188,9 @@ async def briefing_stream_endpoint(request: Request):
                 syncro.list_tickets(status="In Progress"),
                 syncro.list_tickets(status="Waiting on Customer"),
             ]
-            if todoist_ok:
+            if jason:
                 fetch_tasks.append(todoist.list_tasks(filter="today | overdue"))
+                fetch_tasks.append(gmail.fetch_emails(account="both", hours=24))
 
             results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
@@ -198,12 +199,14 @@ async def briefing_stream_endpoint(request: Request):
                 "in_progress_tickets": results[1] if not isinstance(results[1], Exception) else {"error": str(results[1])},
                 "waiting_tickets": results[2] if not isinstance(results[2], Exception) else {"error": str(results[2])},
             }
-            if todoist_ok and len(results) > 3:
+            if jason and len(results) > 3:
                 data["todoist_today"] = results[3] if not isinstance(results[3], Exception) else {"error": str(results[3])}
+            if jason and len(results) > 4:
+                data["emails"] = results[4] if not isinstance(results[4], Exception) else {"error": str(results[4])}
 
             print(f"[timing] briefing prefetch {time.time()-t0:.2f}s", flush=True)
 
-            async for chunk in chat_stream_briefing(data, include_todoist=todoist_ok):
+            async for chunk in chat_stream_briefing(data, include_todoist=jason, include_email=jason):
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
             yield 'data: {"done": true}\n\n'
         except Exception as e:
@@ -219,7 +222,8 @@ async def briefing_stream_endpoint(request: Request):
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest, request: Request):
     try:
-        reply = await chat(req.messages, include_todoist=_include_todoist(request))
+        jason = _is_jason(request)
+        reply = await chat(req.messages, include_todoist=jason, include_email=jason)
         return {"role": "assistant", "content": reply}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -227,11 +231,11 @@ async def chat_endpoint(req: ChatRequest, request: Request):
 
 @app.post("/chat/stream")
 async def chat_stream_endpoint(req: ChatRequest, request: Request):
-    todoist = _include_todoist(request)
+    jason = _is_jason(request)
 
     async def event_generator():
         try:
-            async for chunk in chat_stream(req.messages, include_todoist=todoist):
+            async for chunk in chat_stream(req.messages, include_todoist=jason, include_email=jason):
                 yield f"data: {json.dumps({'text': chunk})}\n\n"
             yield "data: {\"done\": true}\n\n"
         except Exception as e:
