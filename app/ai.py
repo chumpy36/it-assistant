@@ -32,7 +32,7 @@ Format rules:
 - Show max 8 most important ticket items total — new tickets first, then stalled In Progress, then customer replies
 - Table format: | [#NUM](url) | Subject | Customer |
 - List any overdue/today Todoist tasks briefly after tickets if present
-- If email data is present, add a brief "📬 Emails" section after tasks — list only emails that seem genuinely important (client issues, urgent requests, billing, security alerts). Skip newsletters, marketing, notifications. If nothing important, omit the section entirely.
+- If email data is present, always add a brief "📬 Emails" section after tasks — list only emails that seem genuinely important (client issues, urgent requests, billing, security alerts). Skip newsletters, marketing, notifications. If nothing important, say "Nothing urgent."
 - No preamble, no closing remarks — just the data"""
 
 SYSTEM_PROMPT = """You are an IT professional assistant for Holland IT, helping manage Syncro MSP tickets and Todoist tasks via natural language.
