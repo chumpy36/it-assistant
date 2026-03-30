@@ -13,7 +13,10 @@ After running, transfer the token files to the NAS:
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+]
 CREDENTIALS_FILE = "gcal_credentials.json"
 
 ACCOUNTS = [

@@ -272,6 +272,44 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "trash_emails",
+        "description": "Trash all emails matching a Gmail search query in the specified account. Use standard Gmail search syntax (e.g. 'from:marketing@example.com', 'from:domain.com before:2026/1/1'). Always confirm with the user before calling this.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string",
+                    "enum": ["personal", "business"],
+                    "description": "Which account to trash emails from",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Gmail search query identifying emails to trash",
+                },
+            },
+            "required": ["account", "query"],
+        },
+    },
+    {
+        "name": "unsubscribe_email",
+        "description": "Attempt to unsubscribe from a sender using the List-Unsubscribe header of a specific email. Provide the message ID from a check_emails result.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string",
+                    "enum": ["personal", "business"],
+                    "description": "Which account the message is in",
+                },
+                "message_id": {
+                    "type": "string",
+                    "description": "Gmail message ID from check_emails results",
+                },
+            },
+            "required": ["account", "message_id"],
+        },
+    },
 ]
 
 
@@ -356,6 +394,16 @@ async def dispatch_tool(name: str, input: dict) -> str:
             result = await gmail.fetch_emails(
                 account=input.get("account", "both"),
                 hours=input.get("hours", 24),
+            )
+        elif name == "trash_emails":
+            result = await gmail.trash_emails(
+                account=input["account"],
+                query=input["query"],
+            )
+        elif name == "unsubscribe_email":
+            result = await gmail.unsubscribe(
+                account=input["account"],
+                message_id=input["message_id"],
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
