@@ -36,7 +36,7 @@ def _get_service(token_file: str):
     return build("gmail", "v1", credentials=creds)
 
 
-def _fetch_sync(token_file: str, hours: int, max_results: int) -> list[dict]:
+def _fetch_sync(token_file: str, hours: int, max_results: int, account_email: str = "") -> list[dict]:
     service = _get_service(token_file)
 
     after_ts = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
@@ -62,6 +62,7 @@ def _fetch_sync(token_file: str, hours: int, max_results: int) -> list[dict]:
             "subject": headers.get("Subject", "(no subject)"),
             "date": headers.get("Date", ""),
             "snippet": detail.get("snippet", ""),
+            "url": f"https://mail.google.com/mail/?authuser={account_email}#all/{msg['id']}",
         })
 
     return emails
@@ -70,9 +71,9 @@ def _fetch_sync(token_file: str, hours: int, max_results: int) -> list[dict]:
 async def fetch_emails(account: str = "both", hours: int = 24, max_results: int = 20) -> dict:
     """Fetch recent unread emails from one or both Gmail accounts."""
 
-    async def fetch_one(token_file: str) -> dict:
+    async def fetch_one(token_file: str, account_email: str = "") -> dict:
         try:
-            emails = await asyncio.to_thread(_fetch_sync, token_file, hours, max_results)
+            emails = await asyncio.to_thread(_fetch_sync, token_file, hours, max_results, account_email)
             return {"emails": emails, "count": len(emails)}
         except FileNotFoundError as e:
             return {"error": str(e)}
@@ -80,5 +81,5 @@ async def fetch_emails(account: str = "both", hours: int = 24, max_results: int 
             return {"error": f"{type(e).__name__}: {str(e)}"}
 
     keys = [k for k in ("personal", "business") if account in (k, "both")]
-    results = await asyncio.gather(*[fetch_one(ACCOUNTS[k][1]) for k in keys])
+    results = await asyncio.gather(*[fetch_one(ACCOUNTS[k][1], ACCOUNTS[k][0]) for k in keys])
     return dict(zip(keys, results))

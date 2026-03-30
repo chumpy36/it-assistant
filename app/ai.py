@@ -33,6 +33,7 @@ Format rules:
 - Table format: | [#NUM](url) | Subject | Customer |
 - List any overdue/today Todoist tasks briefly after tickets if present
 - If email data is present, always add a brief "📬 Emails" section after tasks — list only emails that seem genuinely important (client issues, urgent requests, billing, security alerts). Skip newsletters, marketing, notifications. If nothing important, say "Nothing urgent."
+- Email links: format subject as a markdown link using the url field — e.g. [Subject](url)
 - No preamble, no closing remarks — just the data"""
 
 SYSTEM_PROMPT = """You are an IT professional assistant for Holland IT, helping manage Syncro MSP tickets and Todoist tasks via natural language.
@@ -91,7 +92,7 @@ When asked what needs attention, what to work on, or for a morning briefing:
 - When asked about emails, call check_emails with account="both" (or "personal"/"business" if specified)
 - Only surface emails that seem genuinely important: client issues, urgent requests, billing, security alerts, vendor problems
 - Skip newsletters, marketing, automated notifications, receipts unless they seem relevant
-- Format: brief list — From | Subject | one-line summary of why it matters
+- Format: brief list — From | [Subject](url) | one-line summary of why it matters
 - If nothing important, say so in one line
 
 ## Personality
