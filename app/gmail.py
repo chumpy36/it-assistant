@@ -77,7 +77,8 @@ def _trash_by_query_sync(token_file: str, query: str) -> dict:
     """Trash all messages matching a Gmail search query. Returns count trashed."""
     service = _get_service(token_file)
 
-    trashed = 0
+    # Collect all message IDs first
+    ids = []
     page_token = None
     while True:
         kwargs = {"userId": "me", "q": query, "maxResults": 500}
@@ -87,18 +88,16 @@ def _trash_by_query_sync(token_file: str, query: str) -> dict:
         messages = result.get("messages", [])
         if not messages:
             break
-        # Batch trash
-        ids = [m["id"] for m in messages]
-        service.users().messages().batchModify(
-            userId="me",
-            body={"ids": ids, "addLabelIds": ["TRASH"], "removeLabelIds": ["INBOX"]},
-        ).execute()
-        trashed += len(ids)
+        ids.extend(m["id"] for m in messages)
         page_token = result.get("nextPageToken")
         if not page_token:
             break
 
-    return {"trashed": trashed, "query": query}
+    # Trash each message individually (batchModify label approach is unreliable)
+    for msg_id in ids:
+        service.users().messages().trash(userId="me", id=msg_id).execute()
+
+    return {"trashed": len(ids), "query": query}
 
 
 def _unsubscribe_sync(token_file: str, message_id: str) -> dict:
