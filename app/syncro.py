@@ -438,10 +438,38 @@ async def search_global(query: str) -> dict:
 
     async with httpx.AsyncClient() as client:
         async def _search_customers():
+            kw_words = _tokenize(query)
+            # Try API search first
             r = await client.get(f"{BASE_URL}/customers", params={"name": query}, headers=_headers())
-            if r.status_code != 200:
-                return []
-            return r.json().get("customers", [])
+            if r.status_code == 200:
+                candidates = [
+                    c for c in r.json().get("customers", [])
+                    if all(w in customer_display_name(c).lower() for w in kw_words)
+                    and customer_display_name(c).lower() not in ("", "none none")
+                ]
+                if candidates:
+                    return candidates
+            # Fall back to paginated full fetch with client-side filter
+            all_c: list = []
+            page = 1
+            while True:
+                pr = await client.get(
+                    f"{BASE_URL}/customers",
+                    params={"page": page, "per_page": 100},
+                    headers=_headers(),
+                )
+                if pr.status_code != 200:
+                    break
+                batch = pr.json().get("customers", [])
+                all_c.extend(batch)
+                if len(batch) < 100:
+                    break
+                page += 1
+            return [
+                c for c in all_c
+                if all(w in customer_display_name(c).lower() for w in kw_words)
+                and customer_display_name(c).lower() not in ("", "none none")
+            ]
 
         async def _search_contacts():
             try:
@@ -449,7 +477,12 @@ async def search_global(query: str) -> dict:
                 if r.status_code != 200:
                     return []
                 data = r.json()
-                return data.get("contacts", data.get("results", []))
+                all_contacts = data.get("contacts", data.get("results", []))
+                kw_words = _tokenize(query)
+                return [
+                    c for c in all_contacts
+                    if all(w in (c.get("name") or "").lower() for w in kw_words)
+                ]
             except Exception:
                 return []
 
