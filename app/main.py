@@ -248,6 +248,37 @@ async def chat_stream_endpoint(req: ChatRequest, request: Request):
     )
 
 
+@app.get("/search/syncro")
+async def search_syncro(q: str):
+    from app.syncro import search_global
+    try:
+        return await search_global(q)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/search/todoist")
+async def search_todoist(q: str, request: Request):
+    if not _is_jason(request):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    from app.todoist import search_tasks
+    try:
+        return await search_tasks(q)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/search/gmail")
+async def search_gmail(q: str, account: str = "both", request: Request = None):
+    if not _is_jason(request):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    from app.gmail import search_emails
+    try:
+        return await search_emails(account=account, query=q)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/manifest.json")
 async def manifest():
     return JSONResponse({

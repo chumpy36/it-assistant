@@ -92,6 +92,36 @@ async def create_task(
         }
 
 
+async def search_tasks(query: str) -> dict:
+    """Fetch all tasks and filter client-side by keyword."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{BASE_URL}/tasks", headers=_headers())
+        resp.raise_for_status()
+        data = resp.json()
+        tasks = data.get("results", data) if isinstance(data, dict) else data
+        kw = query.lower()
+        filtered = [
+            t for t in tasks
+            if kw in t["content"].lower() or kw in (t.get("description") or "").lower()
+        ]
+        return {
+            "query": query,
+            "count": len(filtered),
+            "tasks": [
+                {
+                    "id": t["id"],
+                    "content": t["content"],
+                    "description": t.get("description", ""),
+                    "priority": t.get("priority", 1),
+                    "due": t.get("due"),
+                    "project_id": t.get("project_id"),
+                    "labels": t.get("labels", []),
+                }
+                for t in filtered[:30]
+            ],
+        }
+
+
 async def complete_task(task_id: str) -> dict:
     async with httpx.AsyncClient() as client:
         resp = await client.post(

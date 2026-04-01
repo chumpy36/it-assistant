@@ -161,6 +161,46 @@ async def fetch_emails(account: str = "both", hours: int = 24, max_results: int 
     return dict(zip(keys, results))
 
 
+def _search_sync(token_file: str, query: str, max_results: int, account_email: str = "") -> list[dict]:
+    service = _get_service(token_file)
+    result = service.users().messages().list(
+        userId="me", q=query, maxResults=max_results
+    ).execute()
+    emails = []
+    for msg in result.get("messages", []):
+        detail = service.users().messages().get(
+            userId="me", id=msg["id"], format="metadata",
+            metadataHeaders=["From", "Subject", "Date"],
+        ).execute()
+        headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
+        emails.append({
+            "id": msg["id"],
+            "from": headers.get("From", ""),
+            "subject": headers.get("Subject", "(no subject)"),
+            "date": headers.get("Date", ""),
+            "snippet": detail.get("snippet", ""),
+            "url": f"https://mail.google.com/mail/?authuser={account_email}#all/{msg['id']}",
+        })
+    return emails
+
+
+async def search_emails(account: str = "both", query: str = "", max_results: int = 20) -> dict:
+    """Search emails using a Gmail search query across one or both accounts."""
+
+    async def search_one(token_file: str, account_email: str = "") -> dict:
+        try:
+            emails = await asyncio.to_thread(_search_sync, token_file, query, max_results, account_email)
+            return {"emails": emails, "count": len(emails)}
+        except FileNotFoundError as e:
+            return {"error": str(e)}
+        except Exception as e:
+            return {"error": f"{type(e).__name__}: {str(e)}"}
+
+    keys = [k for k in ("personal", "business") if account in (k, "both")]
+    results = await asyncio.gather(*[search_one(ACCOUNTS[k][1], ACCOUNTS[k][0]) for k in keys])
+    return dict(zip(keys, results))
+
+
 async def trash_emails(account: str, query: str) -> dict:
     """Trash all emails matching a query in the specified account."""
     if account not in ACCOUNTS:

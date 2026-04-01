@@ -432,6 +432,80 @@ async def delete_ticket(ticket_ref: int) -> dict:
         }
 
 
+async def search_global(query: str) -> dict:
+    """Search tickets, customers, and contacts in parallel — mirrors Syncro web UI global search."""
+    import asyncio as _asyncio
+
+    async with httpx.AsyncClient() as client:
+        async def _search_tickets():
+            # Search all statuses including closed/resolved
+            r = await client.get(f"{BASE_URL}/tickets", params={"q": query}, headers=_headers())
+            if r.status_code != 200:
+                return []
+            tickets = r.json().get("tickets", [])
+            # Client-side fallback filter
+            kw = query.lower()
+            filtered = [t for t in tickets if kw in (t.get("subject") or "").lower()
+                        or kw in (t.get("customer_business_name") or "").lower()]
+            return filtered if filtered else tickets
+
+        async def _search_customers():
+            r = await client.get(f"{BASE_URL}/customers", params={"name": query}, headers=_headers())
+            if r.status_code != 200:
+                return []
+            return r.json().get("customers", [])
+
+        async def _search_contacts():
+            try:
+                r = await client.get(f"{BASE_URL}/contacts", params={"name": query}, headers=_headers())
+                if r.status_code != 200:
+                    return []
+                data = r.json()
+                return data.get("contacts", data.get("results", []))
+            except Exception:
+                return []
+
+        tickets, customers, contacts = await _asyncio.gather(
+            _search_tickets(), _search_customers(), _search_contacts()
+        )
+
+        return {
+            "query": query,
+            "tickets": [
+                {
+                    "number": t.get("number"),
+                    "url": ticket_url(t.get("id")),
+                    "subject": t.get("subject"),
+                    "status": t.get("status"),
+                    "customer": t.get("customer_business_name") or t.get("customer_id"),
+                    "updated_at": t.get("updated_at"),
+                }
+                for t in tickets[:20]
+            ],
+            "customers": [
+                {
+                    "id": c.get("id"),
+                    "name": customer_display_name(c),
+                    "email": c.get("email"),
+                    "phone": c.get("phone"),
+                    "url": f"{SYNCRO_BASE}/customers/{c.get('id')}",
+                }
+                for c in customers[:10]
+                if customer_display_name(c).lower() not in ("", "none none")
+            ],
+            "contacts": [
+                {
+                    "id": c.get("id"),
+                    "name": c.get("name"),
+                    "email": c.get("email"),
+                    "phone": c.get("phone"),
+                    "customer": c.get("customer_business_name") or c.get("account_name"),
+                }
+                for c in contacts[:10]
+            ],
+        }
+
+
 async def create_invoice(ticket_ref: int) -> dict:
     async with httpx.AsyncClient() as client:
         internal_id, customer_id = await _resolve_ticket_id(client, ticket_ref)
