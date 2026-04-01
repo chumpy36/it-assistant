@@ -433,22 +433,10 @@ async def delete_ticket(ticket_ref: int) -> dict:
 
 
 async def search_global(query: str) -> dict:
-    """Search tickets, customers, and contacts in parallel — mirrors Syncro web UI global search."""
+    """Search tickets, customers, and contacts — mirrors Syncro web UI global search."""
     import asyncio as _asyncio
 
     async with httpx.AsyncClient() as client:
-        async def _search_tickets():
-            # Search all statuses including closed/resolved
-            r = await client.get(f"{BASE_URL}/tickets", params={"q": query}, headers=_headers())
-            if r.status_code != 200:
-                return []
-            tickets = r.json().get("tickets", [])
-            # Client-side fallback filter
-            kw = query.lower()
-            filtered = [t for t in tickets if kw in (t.get("subject") or "").lower()
-                        or kw in (t.get("customer_business_name") or "").lower()]
-            return filtered if filtered else tickets
-
         async def _search_customers():
             r = await client.get(f"{BASE_URL}/customers", params={"name": query}, headers=_headers())
             if r.status_code != 200:
@@ -465,9 +453,43 @@ async def search_global(query: str) -> dict:
             except Exception:
                 return []
 
-        tickets, customers, contacts = await _asyncio.gather(
-            _search_tickets(), _search_customers(), _search_contacts()
+        # Customers and contacts can run in parallel
+        customers, contacts = await _asyncio.gather(_search_customers(), _search_contacts())
+
+        # Tickets: search by subject keyword AND by customer ID for each matching customer
+        kw = query.lower()
+        ticket_tasks = []
+
+        # Subject keyword search
+        ticket_tasks.append(
+            client.get(f"{BASE_URL}/tickets", params={"q": query}, headers=_headers())
         )
+        # Per-customer ticket search for each matched customer
+        for c in customers[:5]:
+            ticket_tasks.append(
+                client.get(f"{BASE_URL}/tickets", params={"customer_id": c["id"]}, headers=_headers())
+            )
+
+        ticket_responses = await _asyncio.gather(*ticket_tasks, return_exceptions=True)
+
+        seen_ids = set()
+        tickets = []
+        for i, resp in enumerate(ticket_responses):
+            if isinstance(resp, Exception) or resp.status_code != 200:
+                continue
+            for t in resp.json().get("tickets", []):
+                tid = t.get("id")
+                if tid in seen_ids:
+                    continue
+                # i==0 is the keyword search — filter client-side since ?q= may be ignored by API
+                if i == 0:
+                    if kw not in (t.get("subject") or "").lower() and kw not in (t.get("customer_business_name") or "").lower():
+                        continue
+                seen_ids.add(tid)
+                tickets.append(t)
+
+        # Sort by ticket number descending (most recent first)
+        tickets.sort(key=lambda t: t.get("number") or 0, reverse=True)
 
         return {
             "query": query,
@@ -477,10 +499,10 @@ async def search_global(query: str) -> dict:
                     "url": ticket_url(t.get("id")),
                     "subject": t.get("subject"),
                     "status": t.get("status"),
-                    "customer": t.get("customer_business_name") or t.get("customer_id"),
+                    "customer": t.get("customer_business_name") or "",
                     "updated_at": t.get("updated_at"),
                 }
-                for t in tickets[:20]
+                for t in tickets[:30]
             ],
             "customers": [
                 {
