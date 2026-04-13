@@ -47,6 +47,44 @@ async def _find_user_id(client: httpx.AsyncClient, name: str) -> int:
 
 import re as _re
 
+# Common nickname → formal name mappings (and reverse)
+_NICKNAMES: dict[str, list[str]] = {
+    "andy": ["andrew"], "drew": ["andrew"],
+    "bob": ["robert"], "rob": ["robert"], "bobby": ["robert"],
+    "bill": ["william"], "will": ["william"], "billy": ["william"],
+    "jim": ["james"], "jimmy": ["james"],
+    "tom": ["thomas"], "tommy": ["thomas"],
+    "mike": ["michael"], "mick": ["michael"],
+    "dave": ["david"], "davy": ["david"],
+    "chris": ["christopher"],
+    "dan": ["daniel"], "danny": ["daniel"],
+    "dick": ["richard"], "rick": ["richard"], "rich": ["richard"],
+    "don": ["donald"], "donnie": ["donald"],
+    "ed": ["edward", "edgar"], "ted": ["edward", "theodore"],
+    "frank": ["francis", "franklin"],
+    "fred": ["frederick"],
+    "joe": ["joseph"], "joey": ["joseph"],
+    "john": ["jonathan"], "jon": ["jonathan", "john"],
+    "ken": ["kenneth"],
+    "larry": ["lawrence"],
+    "liz": ["elizabeth"], "beth": ["elizabeth"], "betty": ["elizabeth"],
+    "matt": ["matthew"],
+    "nick": ["nicholas"],
+    "pat": ["patrick"],
+    "pete": ["peter"],
+    "sam": ["samuel"],
+    "steve": ["stephen", "steven"],
+    "sue": ["susan"], "susie": ["susan"],
+    "tim": ["timothy"],
+    "tony": ["anthony"],
+    "vince": ["vincent"],
+}
+# Build reverse mapping too (andrew → [andy, drew])
+for _nick, _formals in list(_NICKNAMES.items()):
+    for _f in _formals:
+        _NICKNAMES.setdefault(_f, []).append(_nick)
+
+
 def _tokenize(name: str) -> list[str]:
     """Split on spaces/hyphens AND camelCase, return lowercase words >= 3 chars."""
     # Insert space before uppercase letters that follow lowercase (camelCase split)
@@ -54,18 +92,36 @@ def _tokenize(name: str) -> list[str]:
     return [w for w in spaced.lower().replace("-", " ").split() if len(w) >= 3]
 
 
+def _name_variants(words: list[str]) -> list[list[str]]:
+    """Return list of word-lists to try, expanding nicknames for the first word."""
+    variants = [words]
+    if words:
+        first = words[0]
+        for alt in _NICKNAMES.get(first, []):
+            variants.append([alt] + words[1:])
+    return variants
+
+
 async def _find_customer_id(client: httpx.AsyncClient, name: str) -> int:
     query_words = _tokenize(name)
+    all_variants = _name_variants(query_words)
+
+    def _filter(customers: list, word_list: list[str]) -> list:
+        return [
+            c for c in customers
+            if all(w in customer_display_name(c).lower() for w in word_list)
+            and customer_display_name(c).lower() not in ("", "none none")
+        ]
 
     async def _search_and_filter(params: dict) -> list:
         resp = await client.get(f"{BASE_URL}/customers", params=params, headers=_headers())
         resp.raise_for_status()
         customers = resp.json().get("customers", [])
-        return [
-            c for c in customers
-            if all(w in customer_display_name(c).lower() for w in query_words)
-            and customer_display_name(c).lower() not in ("", "none none")
-        ]
+        for words in all_variants:
+            matches = _filter(customers, words)
+            if matches:
+                return matches
+        return []
 
     # Try API search first with client-side word filter applied
     candidates = await _search_and_filter({"name": name})
@@ -86,11 +142,10 @@ async def _find_customer_id(client: httpx.AsyncClient, name: str) -> int:
             if len(batch) < 100:
                 break
             page += 1
-        candidates = [
-            c for c in all_c
-            if all(w in customer_display_name(c).lower() for w in query_words)
-            and customer_display_name(c).lower() not in ("", "none none")
-        ]
+        for words in all_variants:
+            candidates = _filter(all_c, words)
+            if candidates:
+                break
 
     if not candidates:
         raise ValueError(f"No customer found matching '{name}'")
@@ -231,10 +286,15 @@ async def _find_contact_id(client: httpx.AsyncClient, customer_id: int, contact_
     resp.raise_for_status()
     contacts = resp.json().get("customer", {}).get("contacts", [])
     words = _tokenize(contact_name)
+    all_variants = _name_variants(words)
 
-    # Try full substring match first, then any-word match as fallback
+    # Try full substring match first, then nickname variants, then any-word match as fallback
+    def _any_variant(name: str) -> bool:
+        return any(all(w in name for w in v) for v in all_variants)
+
     for matcher in [
         lambda name: contact_name.lower() in name,
+        _any_variant,
         lambda name: any(w in name for w in words),
     ]:
         matches = [c for c in contacts if matcher(c.get("name", "").lower())]
